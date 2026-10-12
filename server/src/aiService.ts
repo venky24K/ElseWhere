@@ -986,7 +986,7 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
       penalty += 10;
     }
 
-    const score = Math.max(10, Math.min(98, 95 - penalty));
+    const score = penalty === 0 ? 100 : Math.max(10, Math.min(95, 100 - penalty));
     let status: 'likely_ai' | 'mixed' | 'likely_human' = 'likely_human';
     if (score < 50) status = 'likely_ai';
     else if (score < 75) status = 'mixed';
@@ -1003,9 +1003,10 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
     };
   });
 
+  const flaggedCount = sentenceBreakdown.filter((s) => s.status !== 'likely_human').length;
   const totalScore = sentenceBreakdown.length > 0
-    ? Math.round(sentenceBreakdown.reduce((acc, curr) => acc + curr.score, 0) / sentenceBreakdown.length)
-    : 85;
+    ? (flaggedCount === 0 ? 100 : Math.round(sentenceBreakdown.reduce((acc, curr) => acc + curr.score, 0) / sentenceBreakdown.length))
+    : 100;
 
   const humanScore = totalScore;
   const aiScore = 100 - humanScore;

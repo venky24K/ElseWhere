@@ -138,11 +138,16 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
     });
 
     // Find first AI detected flag if any, else 0
+    const flagged = flags.filter((f) => f.status !== 'likely_human');
     const firstAiIdx = flags.findIndex((f) => f.status !== 'likely_human');
     const initialActive = firstAiIdx !== -1 ? firstAiIdx : 0;
 
+    const adjustedResult = flagged.length === 0 && result.humanScore < 100
+      ? { ...result, humanScore: 100, aiScore: 0, verdict: 'Human Written' as const }
+      : result;
+
     set({
-      detectResult: result,
+      detectResult: adjustedResult,
       scanFilePath: filePath,
       flags,
       activeFlagIndex: initialActive,
@@ -207,14 +212,14 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
   },
 
   resolveFlag: (flagIndex, newSentence) => {
-    const { flags } = get();
+    const { flags, detectResult } = get();
     const nextFlags = flags.map((f) => {
       if (f.index === flagIndex) {
         return {
           ...f,
           sentence: newSentence,
           status: 'likely_human' as const,
-          score: 95,
+          score: 100,
           reasons: [],
           suggestedRewrite: undefined,
           wordReplacements: undefined,
@@ -222,7 +227,25 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
       }
       return f;
     });
-    set({ flags: nextFlags });
+
+    const flaggedLeft = nextFlags.filter((f) => f.status !== 'likely_human');
+    const newHumanScore = nextFlags.length > 0
+      ? (flaggedLeft.length === 0 ? 100 : Math.round(nextFlags.reduce((acc, curr) => acc + curr.score, 0) / nextFlags.length))
+      : 100;
+
+    const updatedResult = detectResult
+      ? {
+          ...detectResult,
+          humanScore: newHumanScore,
+          aiScore: 100 - newHumanScore,
+          verdict: newHumanScore >= 80 ? ('Human Written' as const) : newHumanScore >= 60 ? ('Mixed / Edited' as const) : ('Likely Synthetic AI' as const),
+          summary: flaggedLeft.length === 0
+            ? 'All flagged sentences have been resolved and humanized. Authentic academic cadence.'
+            : detectResult.summary,
+        }
+      : null;
+
+    set({ flags: nextFlags, detectResult: updatedResult });
   },
 
   setFlagRewrite: (flagIndex, rewrite) => {
