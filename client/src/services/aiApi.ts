@@ -318,3 +318,44 @@ export async function sendAiGeneratePlanRequest(params: {
   const data = await res.json();
   return data.plan || [];
 }
+
+// Academic Literature & Base Paper Search Types & API
+export interface SearchedPaper {
+  id: string;
+  title: string;
+  authors: string[];
+  year: string;
+  venue?: string;
+  abstract: string;
+  downloadUrl: string; // Direct link to publisher / IEEE / download page
+  pdfUrl?: string; // Direct PDF link if open access
+  doiUrl?: string;
+  scholarUrl: string; // Direct Google Scholar redirection link
+  categories: string[];
+  source: string; // 'IEEE', 'Nature', 'Springer', 'arXiv', etc.
+  citationCount?: number;
+  bibtex: string;
+}
+
+export async function sendPaperSearchRequest(params: {
+  query: string;
+  maxResults?: number;
+  sourceFilter?: 'all' | 'openalex' | 'arxiv';
+  signal?: AbortSignal;
+}): Promise<SearchedPaper[]> {
+  const { signal, ...body } = params;
+  const res = await fetch('/api/papers/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || 'Paper search failed');
+  }
+
+  const data = await res.json();
+  return data.results || [];
+}

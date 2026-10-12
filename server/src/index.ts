@@ -12,6 +12,7 @@ import {
   dispatchPaperSynthesis,
   dispatchAiGeneratePlan,
 } from './aiService.js';
+import { searchAcademicPapers } from './paperSearch.js';
 
 // Load .env automatically if present
 try {
@@ -284,6 +285,39 @@ app.post('/api/ai/plan', async (req, res) => {
   } catch (err: any) {
     console.error('Agent Plan Error:', err);
     res.status(500).json({ error: err.message || 'Agent plan generation failed' });
+  }
+});
+
+// Academic Literature & Base Paper Search (Multi-Source: OpenAlex, IEEE, arXiv, etc.)
+app.post('/api/papers/search', async (req, res) => {
+  try {
+    const { query, maxResults, sourceFilter } = req.body;
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    const results = await searchAcademicPapers(query, maxResults || 15, sourceFilter || 'all');
+    res.json({ results });
+  } catch (err: any) {
+    console.error('Paper Search API Error:', err);
+    res.status(500).json({ error: err.message || 'Paper search failed' });
+  }
+});
+
+app.get('/api/papers/search', async (req, res) => {
+  try {
+    const query = req.query.query as string;
+    const maxResults = Number(req.query.maxResults) || 15;
+    const sourceFilter = (req.query.sourceFilter as 'all' | 'openalex' | 'arxiv') || 'all';
+    if (!query || !query.trim()) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    const results = await searchAcademicPapers(query, maxResults, sourceFilter);
+    res.json({ results });
+  } catch (err: any) {
+    console.error('Paper Search API Error:', err);
+    res.status(500).json({ error: err.message || 'Paper search failed' });
   }
 });
 
