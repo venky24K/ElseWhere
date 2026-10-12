@@ -6,7 +6,10 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import {
   Files,
   Search,
-  Sparkles,
+  Bot,
+  MessageSquare,
+  BookOpen,
+  ShieldCheck,
   ListTree,
   Settings,
 } from 'lucide-react';
@@ -45,9 +48,24 @@ export const ActivityBar: React.FC = () => {
       icon: <Search size={19} />,
     },
     {
-      id: 'ai',
-      label: `AI Copilot (${provider.toUpperCase()})`,
-      icon: <Sparkles size={19} className="text-blue" />,
+      id: 'agent',
+      label: 'Autonomous Agent',
+      icon: <Bot size={19} className="text-amber-500" />,
+    },
+    {
+      id: 'chat',
+      label: `Copilot Chat (${provider.toUpperCase()})`,
+      icon: <MessageSquare size={19} className="text-sky-400" />,
+    },
+    {
+      id: 'papers',
+      label: 'Reference Papers',
+      icon: <BookOpen size={19} className="text-purple-400" />,
+    },
+    {
+      id: 'humanizer',
+      label: 'AI Detector & Humanizer',
+      icon: <ShieldCheck size={19} className="text-emerald-500" />,
     },
     {
       id: 'outline',

@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import { useAiStore } from '../../store/useAiStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useAgentStore, type AgentToolCallLog, type PendingEdit } from '../../store/useAgentStore';
+import { ThinkingTrace } from '../AI/ThinkingTrace';
+import { ExecutionPlanModal } from '../AI/ExecutionPlanModal';
 import {
   Send,
   Trash2,
@@ -18,6 +20,8 @@ import {
   ChevronRight,
   GitBranch,
   X,
+  MessageSquare,
+  ListOrdered,
 } from 'lucide-react';
 
 /** Helper to provide color-coded file extension badges */
@@ -83,7 +87,7 @@ const EditedFileSummary: React.FC<{
   );
 };
 
-/** Compact collapsible row for read/list/search tools */
+/** Compact collapsible row for read/list/search tools with Expandable Data Inspector */
 const ExploredToolSummary: React.FC<{
   tc: AgentToolCallLog;
   onSelectFile: (path: string) => void;
@@ -100,7 +104,7 @@ const ExploredToolSummary: React.FC<{
       : 'Explored files';
 
   return (
-    <div className="my-1 rounded-md text-xs transition-all">
+    <div className="my-1 rounded-md text-xs transition-all border border-border-subtle/50 bg-card/40">
       <button
         type="button"
         className="w-full bg-transparent border-0 p-1 px-2 flex items-center justify-between cursor-pointer text-text-secondary rounded-md hover:bg-card transition-colors"
@@ -109,13 +113,15 @@ const ExploredToolSummary: React.FC<{
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-text-muted text-[11.5px]">Explored</span>
           <span className="font-semibold text-text-primary text-xs truncate">{label.replace('Explored ', '')}</span>
+          {tc.status === 'running' && <Loader2 size={11} className="animate-spin text-amber-500" />}
+          {tc.status === 'error' && <span className="text-[10px] text-rose-500 font-bold uppercase font-mono">Error</span>}
         </div>
         <ChevronRight size={12} className={`text-text-muted transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
       </button>
 
       {expanded && (
-        <div className="p-2 px-2.5 mt-0.5 bg-card-hover border border-border-subtle rounded text-[11.5px] text-text-secondary">
-          {tc.resultMessage && <div className="whitespace-pre-wrap break-words leading-relaxed">{tc.resultMessage}</div>}
+        <div className="p-2 px-2.5 border-t border-border-subtle bg-card-hover rounded-b text-[11.5px] text-text-secondary max-h-[180px] overflow-y-auto">
+          {tc.resultMessage && <div className="whitespace-pre-wrap break-words leading-relaxed font-mono text-[10.5px]">{tc.resultMessage}</div>}
           {targetPath && (
             <button
               type="button"
@@ -131,13 +137,13 @@ const ExploredToolSummary: React.FC<{
   );
 };
 
-/** Compact collapsible row for compiler/diagnostic tools */
+/** Compact collapsible row for compiler/diagnostic tools with Expandable Data Inspector */
 const RanToolSummary: React.FC<{ tc: AgentToolCallLog }> = ({ tc }) => {
   const [expanded, setExpanded] = useState(false);
   const isCompile = tc.name === 'compile_and_diagnose';
 
   return (
-    <div className="my-1 rounded-md text-xs transition-all">
+    <div className="my-1 rounded-md text-xs transition-all border border-border-subtle/50 bg-card/40">
       <button
         type="button"
         className="w-full bg-transparent border-0 p-1 px-2 flex items-center justify-between cursor-pointer text-text-secondary rounded-md hover:bg-card transition-colors"
@@ -145,16 +151,17 @@ const RanToolSummary: React.FC<{ tc: AgentToolCallLog }> = ({ tc }) => {
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-text-muted text-[11.5px]">Ran</span>
-          <span className="font-mono text-[11px] text-text-primary bg-black/5 px-1.5 py-0.5 rounded">
+          <span className="font-mono text-[11px] text-text-primary bg-black/10 px-1.5 py-0.5 rounded">
             {isCompile ? `compile (${tc.args.engine || 'tectonic'})` : tc.name}
           </span>
           {tc.status === 'running' && <Loader2 size={11} className="animate-spin text-amber-500" />}
+          {tc.status === 'error' && <span className="text-[10px] text-rose-500 font-bold uppercase font-mono">Failed</span>}
         </div>
         <ChevronRight size={12} className={`text-text-muted transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
       </button>
 
       {expanded && tc.resultMessage && (
-        <div className="p-2 px-2.5 mt-0.5 bg-card-hover border border-border-subtle rounded text-[11.5px] text-text-secondary">
+        <div className="p-2 px-2.5 border-t border-border-subtle bg-card-hover rounded-b text-[11px] font-mono text-text-secondary max-h-[180px] overflow-y-auto">
           <div className="whitespace-pre-wrap break-words leading-relaxed">{tc.resultMessage}</div>
         </div>
       )}
@@ -270,19 +277,25 @@ const EditedFilesBox: React.FC<{
   );
 };
 
-export const AiPanel: React.FC = () => {
-  // Mode: 'agent' | 'chat'
-  const [activeMode, setActiveMode] = useState<'agent' | 'chat'>('agent');
+export interface AiPanelProps {
+  forcedMode?: 'agent' | 'chat';
+}
+
+export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
+  const activeMode = forcedMode;
 
   // Copilot Chat store
   const {
     chatMessages,
     isChatLoading,
     sendChatMessage,
+    abortChat,
     clearChat,
     setSettingsModalOpen,
     selectedModel,
     provider,
+    includeDocContext,
+    setIncludeDocContext,
     insertAtCursor,
   } = useAiStore();
 
@@ -296,6 +309,7 @@ export const AiPanel: React.FC = () => {
     error: agentError,
     pendingEdits,
     startAgentTask,
+    generatePlan,
     stopAgent,
     clearAgentLogs,
     acceptEdit,
@@ -312,14 +326,22 @@ export const AiPanel: React.FC = () => {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const agentEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const agentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const activeFile = files[activeFilePath];
+
+  // Auto-resize textarea up to 160px
+  const autoResize = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  };
 
   useEffect(() => {
     if (activeMode === 'chat') {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } else {
+    } else if (activeMode === 'agent') {
       agentEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatMessages, isChatLoading, agentLogs, isAgentRunning, activeMode]);
@@ -332,6 +354,9 @@ export const AiPanel: React.FC = () => {
     const docContext = activeFile ? activeFile.content : undefined;
     sendChatMessage(trimmed, docContext);
     setInputPrompt('');
+    if (chatTextareaRef.current) {
+      chatTextareaRef.current.style.height = 'auto';
+    }
   };
 
   const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -349,7 +374,16 @@ export const AiPanel: React.FC = () => {
     startAgentTask(goal);
     if (!goalOverride) {
       setAgentGoalInput('');
+      if (agentTextareaRef.current) {
+        agentTextareaRef.current.style.height = 'auto';
+      }
     }
+  };
+
+  const handleAgentPlan = () => {
+    const goal = agentGoalInput.trim();
+    if (!goal || isAgentRunning) return;
+    generatePlan(goal);
   };
 
   const handleAgentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -397,8 +431,8 @@ export const AiPanel: React.FC = () => {
                 const isCopied = copiedId === blockId;
 
                 return (
-                  <div key={blockId} className="my-2 bg-[#201c18] border border-border-subtle rounded-md overflow-hidden text-xs">
-                    <div className="flex items-center justify-between px-2.5 py-1 bg-[#1a1714] border-b border-white/5">
+                  <div key={blockId} className="my-2 bg-[#1b1f27] border border-border-subtle rounded-md overflow-hidden text-xs">
+                    <div className="flex items-center justify-between px-2.5 py-1 bg-[#13161c] border-b border-white/5">
                       <span className="font-mono text-[10px] font-semibold text-[#a89f92]">{lang}</span>
                       <div className="flex items-center gap-1">
                         <button
@@ -429,7 +463,7 @@ export const AiPanel: React.FC = () => {
               }
 
               return (
-                <code className="font-mono text-[11.5px] bg-sky-500/10 text-sky-700 px-1 py-0.5 rounded border border-sky-500/20" {...props}>
+                <code className="font-mono text-[11.5px] bg-sky-500/10 text-sky-400 px-1 py-0.5 rounded border border-sky-500/20" {...props}>
                   {children}
                 </code>
               );
@@ -446,16 +480,37 @@ export const AiPanel: React.FC = () => {
     ? (selectedModel.includes('/') ? selectedModel.split('/')[1] : selectedModel.replace('gemini-', ''))
     : 'AI';
 
+  const chatPlaceholder = provider === 'groq'
+    ? `Ask Groq LPU (${modelShortName}) (Enter to send, Shift+Enter for newline)...`
+    : `Ask Google Gemini (${modelShortName}) (Enter to send, Shift+Enter for newline)...`;
+
   return (
     <div className="flex flex-col h-full bg-sidebar overflow-hidden select-none">
-      {/* Header */}
+      {/* Top Header */}
       <div className="h-[38px] px-3 bg-sidebar border-b border-border-subtle flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-text-primary tracking-wide uppercase">{modelShortName}</span>
+          {activeMode === 'agent' ? (
+            <>
+              <Bot size={15} className="text-amber-500" />
+              <span className="text-xs font-semibold text-text-primary tracking-wide uppercase">
+                Autonomous Agent
+              </span>
+            </>
+          ) : (
+            <>
+              <MessageSquare size={15} className="text-sky-400" />
+              <span className="text-xs font-semibold text-text-primary tracking-wide uppercase">
+                Copilot Chat
+              </span>
+            </>
+          )}
+          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/15 text-text-muted border border-white/5 truncate max-w-[130px]">
+            {modelShortName}
+          </span>
         </div>
 
         <div className="flex items-center gap-1">
-          {activeMode === 'chat' ? (
+          {activeMode === 'chat' && (
             <button
               type="button"
               className="text-text-muted hover:text-text-primary p-1 rounded hover:bg-card cursor-pointer border-0 bg-transparent transition-colors"
@@ -464,7 +519,9 @@ export const AiPanel: React.FC = () => {
             >
               <Trash2 size={13} />
             </button>
-          ) : (
+          )}
+
+          {activeMode === 'agent' && (
             <button
               type="button"
               className="text-text-muted hover:text-text-primary p-1 rounded hover:bg-card cursor-pointer border-0 bg-transparent transition-colors"
@@ -479,36 +536,14 @@ export const AiPanel: React.FC = () => {
             type="button"
             className="text-text-muted hover:text-text-primary p-1 rounded hover:bg-card cursor-pointer border-0 bg-transparent transition-colors"
             onClick={() => setSettingsModalOpen(true)}
-            title="Configure AI Keys & Models"
+            title="Configure AI Keys & Reasoning Models"
           >
             <Settings size={13} />
           </button>
         </div>
       </div>
 
-      {/* Mode Switcher: Agent Mode vs Copilot Chat */}
-      <div className="flex p-1 gap-1 bg-card/60 border-b border-border-subtle shrink-0">
-        <button
-          type="button"
-          className={`flex-1 py-1 text-xs font-medium rounded text-center transition-all cursor-pointer border-0 ${
-            activeMode === 'agent' ? 'bg-card text-text-primary font-semibold shadow-xs' : 'bg-transparent text-text-muted hover:text-text-primary'
-          }`}
-          onClick={() => setActiveMode('agent')}
-        >
-          <span>Agent Mode</span>
-        </button>
-        <button
-          type="button"
-          className={`flex-1 py-1 text-xs font-medium rounded text-center transition-all cursor-pointer border-0 ${
-            activeMode === 'chat' ? 'bg-card text-text-primary font-semibold shadow-xs' : 'bg-transparent text-text-muted hover:text-text-primary'
-          }`}
-          onClick={() => setActiveMode('chat')}
-        >
-          <span>Copilot Chat</span>
-        </button>
-      </div>
-
-      {/* ================= AGENT MODE VIEW ================= */}
+      {/* ================= 1. AGENT MODE VIEW ================= */}
       {activeMode === 'agent' && (
         <>
           <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2.5 min-h-0 select-text">
@@ -516,20 +551,22 @@ export const AiPanel: React.FC = () => {
             {agentLogs.length === 0 && !isAgentRunning && (
               <div className="bg-card border border-border-subtle rounded-lg p-3 text-xs flex flex-col gap-2">
                 <div className="flex items-center gap-2 font-semibold text-text-primary">
-                  <Bot size={16} className="text-amber-600" />
+                  <Bot size={16} className="text-amber-500" />
                   <span>ElseWhere Autonomous Agent</span>
                 </div>
                 <div className="text-text-secondary leading-relaxed">
                   The agent plans multi-step tasks, surgically edits workspace files, runs compilation tests, and repairs LaTeX errors automatically.
                 </div>
 
-                <div className="font-semibold text-text-primary text-[11px] mt-1 uppercase tracking-wider">Quick Agent Goals</div>
+                <div className="font-semibold text-text-primary text-[11px] mt-1 uppercase tracking-wider">
+                  Quick Agent Goals
+                </div>
                 <div className="flex flex-col gap-1.5">
                   {agentPresets.map((preset, idx) => (
                     <button
                       key={idx}
                       type="button"
-                      className="text-left p-1.5 px-2 rounded bg-card-hover hover:bg-black/5 border border-border-subtle text-text-secondary hover:text-text-primary text-xs cursor-pointer transition-colors"
+                      className="text-left p-1.5 px-2 rounded bg-card-hover hover:bg-black/10 border border-border-subtle text-text-secondary hover:text-text-primary text-xs cursor-pointer transition-colors"
                       onClick={() => handleAgentStart(preset.goal)}
                     >
                       <span>{preset.label}</span>
@@ -546,40 +583,39 @@ export const AiPanel: React.FC = () => {
               </div>
             )}
 
-            {/* Agent Steps & Response: Compact summaries instead of raw diff blocks */}
+            {/* Agent Steps & Response: Compact summaries with ThinkingTrace */}
             {agentLogs.map((step) => {
               const responseText = step.completedSummary;
               return (
                 <div key={step.stepIndex} className="flex flex-col gap-1.5">
-                  {/* Tool Invocations: Rendered as clean summary rows matching the AI IDE style */}
-                  {step.toolCalls && step.toolCalls.map((tc) => {
-                    if (tc.name === 'edit_file' || tc.name === 'write_file') {
-                      return (
-                        <EditedFileSummary
-                          key={tc.id}
-                          tc={tc}
-                          onSelectFile={(p) => setActiveFile(p)}
-                        />
-                      );
-                    }
-                    if (tc.name === 'read_file' || tc.name === 'list_files' || tc.name === 'search_files') {
-                      return (
-                        <ExploredToolSummary
-                          key={tc.id}
-                          tc={tc}
-                          onSelectFile={(p) => setActiveFile(p)}
-                        />
-                      );
-                    }
-                    return (
-                      <RanToolSummary
-                        key={tc.id}
-                        tc={tc}
-                      />
-                    );
-                  })}
+                  {/* Internal Reasoning Trace if present */}
+                  {step.thought && <ThinkingTrace thought={step.thought} />}
 
-                  {/* Clean Agent Response without any subheading or title */}
+                  {/* Tool Invocations */}
+                  {step.toolCalls &&
+                    step.toolCalls.map((tc) => {
+                      if (tc.name === 'edit_file' || tc.name === 'write_file') {
+                        return (
+                          <EditedFileSummary
+                            key={tc.id}
+                            tc={tc}
+                            onSelectFile={(p) => setActiveFile(p)}
+                          />
+                        );
+                      }
+                      if (tc.name === 'read_file' || tc.name === 'list_files' || tc.name === 'search_files') {
+                        return (
+                          <ExploredToolSummary
+                            key={tc.id}
+                            tc={tc}
+                            onSelectFile={(p) => setActiveFile(p)}
+                          />
+                        );
+                      }
+                      return <RanToolSummary key={tc.id} tc={tc} />;
+                    })}
+
+                  {/* Agent Response */}
                   {responseText && (
                     <div className="bg-card/70 border border-border-subtle rounded-lg p-2.5 text-xs text-text-primary">
                       {renderContent(responseText, `agent-step-${step.stepIndex}`)}
@@ -591,8 +627,8 @@ export const AiPanel: React.FC = () => {
 
             {/* Error Message */}
             {agentError && (
-              <div className="flex items-center gap-2 p-2 bg-rose-500/10 border border-rose-500/20 rounded-md text-xs text-rose-700">
-                <AlertCircle size={14} className="text-rose-600" />
+              <div className="flex items-center gap-2 p-2 bg-rose-500/10 border border-rose-500/20 rounded-md text-xs text-rose-400">
+                <AlertCircle size={14} className="text-rose-500" />
                 <span>{agentError}</span>
               </div>
             )}
@@ -613,7 +649,7 @@ export const AiPanel: React.FC = () => {
                 onClick={stopAgent}
               >
                 <Square size={11} className="inline mr-1" />
-                Stop
+                <span>Stop</span>
               </button>
             </div>
           )}
@@ -632,47 +668,66 @@ export const AiPanel: React.FC = () => {
           {/* Agent Goal Input Composer */}
           <div className="p-2 bg-sidebar border-t border-border-subtle shrink-0 flex flex-col gap-1.5">
             <textarea
+              ref={agentTextareaRef}
               className="w-full bg-card border border-border-subtle focus:border-brand rounded-md p-2 text-xs text-text-primary resize-none outline-none font-sans placeholder:text-text-muted leading-relaxed"
-              placeholder="Ask anything, @ to mention, / for actions..."
+              placeholder="Describe research goal or manuscript edits (Enter to run)..."
               value={agentGoalInput}
-              onChange={(e) => setAgentGoalInput(e.target.value)}
+              onChange={(e) => {
+                setAgentGoalInput(e.target.value);
+                autoResize(agentTextareaRef.current);
+              }}
               onKeyDown={handleAgentKeyDown}
               rows={2}
               disabled={isAgentRunning}
             />
 
             <div className="flex items-center justify-between">
-              <span className="text-[10.5px] text-text-muted font-mono truncate max-w-[150px]">
+              <span className="text-[10.5px] text-text-muted font-mono truncate max-w-[140px]">
                 {modelShortName}
               </span>
 
-              {isAgentRunning ? (
-                <button
-                  type="button"
-                  className="bg-rose-600 hover:bg-rose-500 text-white text-xs px-2.5 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors border-0"
-                  onClick={stopAgent}
-                >
-                  <Square size={12} />
-                  <span>Stop</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium px-3 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors border-0"
-                  onClick={() => handleAgentStart()}
-                  disabled={!agentGoalInput.trim()}
-                  title="Run Autonomous Agent (Enter)"
-                >
-                  <Play size={12} fill="currentColor" />
-                  <span>Run Agent</span>
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {isAgentRunning ? (
+                  <button
+                    type="button"
+                    className="bg-rose-600 hover:bg-rose-500 text-white text-xs px-2.5 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors border-0"
+                    onClick={stopAgent}
+                  >
+                    <Square size={12} />
+                    <span>Stop</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="bg-card hover:bg-card-hover border border-border-subtle text-text-secondary hover:text-text-primary text-xs px-2.5 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      onClick={handleAgentPlan}
+                      disabled={!agentGoalInput.trim()}
+                      title="Preview Step-by-Step Execution Plan"
+                    >
+                      <ListOrdered size={12} className="text-amber-500" />
+                      <span>Plan First</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors border-0 shadow-xs"
+                      onClick={() => handleAgentStart()}
+                      disabled={!agentGoalInput.trim()}
+                      title="Run Autonomous Agent (Enter)"
+                    >
+                      <Play size={12} fill="currentColor" />
+                      <span>Run Agent</span>
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </>
       )}
 
-      {/* ================= COPILOT CHAT VIEW ================= */}
+      {/* ================= 2. COPILOT CHAT VIEW ================= */}
       {activeMode === 'chat' && (
         <>
           {/* Quick Action Chips */}
@@ -696,6 +751,9 @@ export const AiPanel: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0 select-text">
             {chatMessages.map((msg) => (
               <div key={msg.id} className="flex flex-col gap-1">
+                {/* Thinking Trace if model executed reasoning steps */}
+                {msg.thought && <ThinkingTrace thought={msg.thought} />}
+
                 <div
                   className={`rounded-lg p-2.5 text-xs max-w-[92%] ${
                     msg.role === 'user'
@@ -703,10 +761,11 @@ export const AiPanel: React.FC = () => {
                       : 'self-start bg-card border border-border-subtle text-text-primary'
                   }`}
                 >
-                  <div className="text-[10px] opacity-70 mb-1 font-semibold">
-                    <span className="font-semibold">
-                      {msg.role === 'user' ? 'You' : provider === 'groq' ? 'Groq LPU' : 'Gemini'}
-                    </span>
+                  <div className="text-[10px] opacity-70 mb-1 font-semibold flex items-center gap-1">
+                    <span>{msg.role === 'user' ? 'You' : provider === 'groq' ? 'Groq LPU' : 'Gemini'}</span>
+                    {msg.role !== 'user' && (
+                      <span className="font-mono text-[9px] opacity-60">({modelShortName})</span>
+                    )}
                   </div>
                   <div>{renderContent(msg.content, msg.id)}</div>
                 </div>
@@ -715,9 +774,19 @@ export const AiPanel: React.FC = () => {
 
             {isChatLoading && (
               <div className="flex flex-col gap-1">
-                <div className="self-start bg-card border border-border-subtle text-text-primary rounded-lg p-2.5 text-xs flex items-center gap-2">
-                  <Loader2 size={13} className="animate-spin text-sky-600" />
-                  <span>Generating response with {provider === 'groq' ? 'Groq LPU' : 'Gemini'}...</span>
+                <div className="self-start bg-card border border-border-subtle text-text-primary rounded-lg p-2.5 text-xs flex items-center justify-between gap-3 min-w-[200px]">
+                  <div className="flex items-center gap-2">
+                    <Loader2 size={13} className="animate-spin text-sky-400" />
+                    <span>Generating response...</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer border-0 transition-colors flex items-center gap-1"
+                    onClick={abortChat}
+                  >
+                    <Square size={10} />
+                    <span>Stop</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -739,35 +808,60 @@ export const AiPanel: React.FC = () => {
           {/* Chat Input Composer */}
           <div className="p-2 bg-sidebar border-t border-border-subtle shrink-0 flex flex-col gap-1.5">
             <textarea
-              ref={textareaRef}
+              ref={chatTextareaRef}
               className="w-full bg-card border border-border-subtle focus:border-brand rounded-md p-2 text-xs text-text-primary resize-none outline-none font-sans placeholder:text-text-muted leading-relaxed"
-              placeholder="Ask anything, @ to mention, / for actions..."
+              placeholder={chatPlaceholder}
               value={inputPrompt}
-              onChange={(e) => setInputPrompt(e.target.value)}
+              onChange={(e) => {
+                setInputPrompt(e.target.value);
+                autoResize(chatTextareaRef.current);
+              }}
               onKeyDown={handleChatKeyDown}
               rows={2}
               disabled={isChatLoading}
             />
 
             <div className="flex items-center justify-between">
-              <span className="text-[10.5px] text-text-muted font-mono truncate max-w-[150px]">
-                {modelShortName}
-              </span>
+              {/* Document Context Toggle */}
+              <label className="flex items-center gap-1.5 text-[11px] text-text-secondary cursor-pointer hover:text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={includeDocContext}
+                  onChange={(e) => setIncludeDocContext(e.target.checked)}
+                  className="rounded text-brand focus:ring-0 cursor-pointer"
+                />
+                <span>Include Document Context</span>
+              </label>
 
-              <button
-                type="button"
-                className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium px-3 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors border-0"
-                onClick={handleChatSend}
-                disabled={!inputPrompt.trim() || isChatLoading}
-                title="Send prompt (Enter)"
-              >
-                <Send size={13} />
-                <span>Send</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {isChatLoading ? (
+                  <button
+                    type="button"
+                    className="bg-rose-600 hover:bg-rose-500 text-white text-xs px-2.5 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors border-0"
+                    onClick={abortChat}
+                  >
+                    <Square size={12} />
+                    <span>Stop</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1 rounded flex items-center gap-1 cursor-pointer transition-colors border-0 shadow-xs"
+                    onClick={handleChatSend}
+                    disabled={!inputPrompt.trim() || isChatLoading}
+                    title="Send prompt (Enter)"
+                  >
+                    <Send size={12} />
+                    <span>Send</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </>
       )}
+      {/* Execution Roadmap Modal (Phase 4.2 Interactive Preview) */}
+      <ExecutionPlanModal />
     </div>
   );
 };

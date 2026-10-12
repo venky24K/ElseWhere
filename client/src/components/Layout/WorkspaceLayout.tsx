@@ -5,6 +5,8 @@ import { FileTree } from '../Sidebar/FileTree';
 import { SearchPanel } from '../Sidebar/SearchPanel';
 import { OutlinePanel } from '../Sidebar/OutlinePanel';
 import { AiPanel } from '../Sidebar/AiPanel';
+import { ReferencePapersView } from '../AI/ReferencePapersView';
+import { HumanizerDetectorView } from '../AI/HumanizerDetectorView';
 import { MonacoLatexEditor } from '../Editor/MonacoLatexEditor';
 import { PdfViewer } from '../Preview/PdfViewer';
 import { LogsDrawer } from '../Logs/LogsDrawer';
@@ -63,10 +65,17 @@ export const WorkspaceLayout: React.FC = () => {
     switch (activeSidebarTab) {
       case 'search':
         return <SearchPanel />;
-      case 'ai':
-        return <AiPanel />;
       case 'outline':
         return <OutlinePanel />;
+      case 'agent':
+        return <AiPanel forcedMode="agent" />;
+      case 'chat':
+      case 'ai':
+        return <AiPanel forcedMode="chat" />;
+      case 'papers':
+        return <ReferencePapersView />;
+      case 'humanizer':
+        return <HumanizerDetectorView />;
       case 'files':
       default:
         return <FileTree />;

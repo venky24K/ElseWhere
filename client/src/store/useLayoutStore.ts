@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 
 export type ViewMode = 'split' | 'editor-only' | 'preview-only';
-export type SidebarTab = 'files' | 'search' | 'ai' | 'outline';
+export type SidebarTab =
+  | 'files'
+  | 'search'
+  | 'agent'
+  | 'chat'
+  | 'papers'
+  | 'humanizer'
+  | 'outline'
+  | 'ai';
 
 interface LayoutPreferences {
   sidebarCollapsed: boolean;
@@ -39,9 +47,19 @@ function loadSavedPreferences(): LayoutPreferences {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const validTabs: SidebarTab[] = [
+        'files',
+        'search',
+        'agent',
+        'chat',
+        'papers',
+        'humanizer',
+        'outline',
+        'ai',
+      ];
       return {
         sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
-        activeSidebarTab: (['files', 'search', 'ai', 'outline'].includes(parsed.activeSidebarTab)
+        activeSidebarTab: (validTabs.includes(parsed.activeSidebarTab)
           ? parsed.activeSidebarTab
           : 'files') as SidebarTab,
         viewMode: (['split', 'editor-only', 'preview-only'].includes(parsed.viewMode)

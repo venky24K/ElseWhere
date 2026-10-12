@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useAiStore, type AiProvider } from '../../store/useAiStore';
-import { Sparkles, X, Key, ExternalLink, Check, Eye, EyeOff, Cpu, Zap } from 'lucide-react';
+import { useAiStore, type AiProvider, type ReasoningEffort } from '../../store/useAiStore';
+import { Sparkles, X, Key, ExternalLink, Check, Eye, EyeOff, Cpu, Zap, Brain } from 'lucide-react';
 
 export const AiSettingsModal: React.FC = () => {
   const {
@@ -15,6 +15,8 @@ export const AiSettingsModal: React.FC = () => {
     selectedModel,
     setSelectedModel,
     supportedModels,
+    reasoningEffort,
+    setReasoningEffort,
   } = useAiStore();
 
   const [activeTab, setActiveTab] = useState<AiProvider>(provider);
@@ -220,6 +222,24 @@ export const AiSettingsModal: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Shared Reasoning Effort Control */}
+        <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
+            <Brain size={14} className="text-purple-400" />
+            <span>Extended Reasoning Effort</span>
+          </label>
+          <select
+            className="bg-card border border-border-subtle text-text-primary text-[12.5px] p-2 rounded-md outline-none cursor-pointer focus:border-accent-blue"
+            value={reasoningEffort}
+            onChange={(e) => setReasoningEffort(e.target.value as ReasoningEffort)}
+          >
+            <option value="low">Low (Fastest response, concise derivations)</option>
+            <option value="medium">Medium (Balanced academic reasoning)</option>
+            <option value="high">High (Deep analytical rigor & proof planning)</option>
+            <option value="deep">Deep (Exhaustive mathematical verification)</option>
+          </select>
+        </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle mt-1">

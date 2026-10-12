@@ -12,7 +12,7 @@
 | **Phase 1** | **Compilation Engine & Diagnostics** | Node.js Sandboxes + Tectonic/Multi-Engine + Diagnostic Parser | `[COMPLETED]` | Delivered |
 | **Phase 2** | **Design Token System** | Tailwind CSS v4 + Semantic `@theme` + Dark Theme | `[COMPLETED]` | Delivered |
 | **Phase 3** | **Dual AI Copilot & VS Code Activity Bar** | Groq LPU + Gemini + VS Code Activity Bar + Multi-View Sidebar | `[COMPLETED]` | Delivered |
-| **Phase 4** | **Agentic AI & Research Intelligence** | Dual-Mode ChatPanel + Autonomous Agent + Tool Calling + Reasoning + Base Paper Reading + Humanizer | `[IN PROGRESS]` | Q2 2026 |
+| **Phase 4** | **Agentic AI & Research Intelligence** | Dual-Mode ChatPanel + Autonomous Agent + Tool Calling + Reasoning + Base Paper Reading + Humanizer | `[COMPLETED]` | Delivered |
 | **Phase 5** | **Professional IDE Workspace & Navigation** | Application Menu Bar + Editor Tab Pills + Settings Hub + PDF Preview Controls | `[COMPLETED]` | Delivered |
 | **Phase 6** | **Overleaf Industrial Differentiators** | AI Doctor, SyncTeX, Smart DOI/BibTeX, TikZ Studio, PDF Diff, Pandoc/Word Export | `[PLANNED]` | Q3 2026 |
 | **Phase 7** | **Sandboxing, Decoupled Queue & WASM** | Docker/Firecracker, BullMQ + Redis, Client-side WASM TeX (Offline) | `[PLANNED]` | Q3 2026 |
@@ -169,30 +169,30 @@ flowchart TB
 
 ---
 
-## 🧠 Phase 4: Agentic Intelligence, Research Synthesis & Writing Humanization `[IN PROGRESS]`
+## 🧠 Phase 4: Agentic Intelligence, Research Synthesis & Writing Humanization `[COMPLETED]`
 
-### 4.1 ChatPanel Architecture & Dual-Mode AI Workspace (`AiPanel.tsx`) `[IN PROGRESS]`
+### 4.1 ChatPanel Architecture & Dual-Mode AI Workspace (`AiPanel.tsx`) `[COMPLETED]`
 - [x] **Dual-Mode Switcher Interface**:
-  - Segmented toggle switching between **⚡ Agent Mode** and **💬 Copilot Chat Mode**.
+  - Segmented toggle switching between **⚡ Agent Mode**, **💬 Copilot Chat Mode**, **📚 Reference Papers**, and **🛡️ Academic Humanizer**.
   - Provider & model indicator badges (Groq LPU / Google Gemini with model short name).
   - Header actions: Clear History (context-dependent for Chat vs. Agent) and AI Settings dialog launcher.
-- [ ] **Copilot Chat Interface & Formatting**:
+- [x] **Copilot Chat Interface & Formatting**:
   - [x] Multi-turn conversational history maintaining author-copilot dialogue.
   - [x] Interactive LaTeX code cards with syntax badges, copy button, and 1-click Monaco cursor insertion (`insertAtCursor`).
   - [x] 4 one-click starter quick action chips (*Polish Academic Tone*, *Add Math Equation*, *Create Table*, *Fix LaTeX Errors*).
   - [x] **Rich Markdown Message Renderer**: Render bold, italics, bullet lists, numbered lists, headings, and inline math/code instead of raw markdown characters.
-  - [ ] **Auto-Resizing Composer Textarea**: Dynamic height expansion up to 160px with `Enter` (send) and `Shift + Enter` (newline) handling.
-  - [ ] **Dynamic Provider Placeholders & Sender Metadata**: Contextual placeholders matching active engine and immutable provider branding on message bubbles.
-  - [ ] **Document Context & Selection Toggle**: Toggle switch for `[x] Include Document Context` and active selection line-count badge.
-  - [ ] **Thread Persistence**: Store recent conversation history in `localStorage` so chats survive browser refreshes.
+  - [x] **Auto-Resizing Composer Textarea**: Dynamic height expansion up to 160px with `Enter` (send) and `Shift + Enter` (newline) handling.
+  - [x] **Dynamic Provider Placeholders & Sender Metadata**: Contextual placeholders matching active engine and immutable provider branding on message bubbles.
+  - [x] **Document Context & Selection Toggle**: Toggle switch for `[x] Include Document Context` and active selection line-count badge.
+  - [x] **Thread Persistence**: Store recent conversation history in `localStorage` so chats survive browser refreshes.
 - [x] **Autonomous Agent Workspace UI**:
   - [x] Goal composer with pre-configured task chips (*Fix Errors*, *Booktabs Tables*, *BibTeX Citations*, *Math Appendix*).
   - [x] Clean user message box and direct agent response card (no redundant headers or emoji clutter).
   - [x] Interactive tool call cards displaying tool icon, execution state badges (`running`, `success`, `error`), and error diagnostics.
   - [x] Live syntax diff cards showing surgical file modifications (`- target` / `+ replacement`).
   - [x] Step progress counter (`Step X/10`) with live execution footer.
-  - [ ] **Execution Cancellation & Status Badges**: `AbortController` integration with responsive `Stopped` / `Aborted` state indicators.
-  - [ ] **Expandable Tool Data Inspector**: Collapsible drawer revealing returned search results, line numbers, and raw compiler diagnostic logs.
+  - [x] **Execution Cancellation & Status Badges**: `AbortController` integration with responsive `Stopped` / `Aborted` state indicators.
+  - [x] **Expandable Tool Data Inspector**: Collapsible drawer revealing returned search results, line numbers, and raw compiler diagnostic logs.
 
 ### 4.2 Autonomous Agent Mode & Prompt Architecture (`prompts.ts`) `[COMPLETED]`
 - [x] **Modular Prompt Architecture (`prompts.ts`)**:
@@ -204,9 +204,9 @@ flowchart TB
 - [x] **Autonomous Goal Execution**:
   - Autonomous Agent mode capable of breaking down high-level manuscript and coding goals across the workspace.
   - Iterative `Plan ➔ Act ➔ Observe ➔ Reflect ➔ Verify` execution cycle (up to 10 sequential steps).
-- [ ] **Interactive Execution Plan Preview**:
+- [x] **Interactive Execution Plan Preview** (`ExecutionPlanModal.tsx`):
   - Displays proposed step-by-step roadmap of file edits before modifying workspace files.
-  - Allows user approval, step rejection, or single-step execution checkpoints.
+  - Allows user approval, step rejection, or single-step execution checkpoints via "Plan First".
 - [x] **Automated Test-Compile & Self-Correction**:
   - Automatically triggers compilation via `compile_and_diagnose` after writing code.
   - Inspects compiler diagnostic logs; if syntax errors or missing packages occur, autonomously patches files until the project compiles with 0 errors.
@@ -222,19 +222,19 @@ flowchart TB
   - `compile_and_diagnose(engine?)`: Trigger build and return structured diagnostics to the agent.
 - [x] Interactive tool execution badges in the AI sidebar with status chips, result messages, and live diff previews.
 
-### 4.4 Deep Reasoning & Extended Thinking Capacity `[TODO]`
-- [ ] Support for flagship reasoning models:
-  - **DeepSeek-R1**, **QwQ-32B**, **Gemini 2.0 Flash Thinking**, and Groq reasoning endpoints.
-- [ ] **Collapsible Thinking Trace UI Component**:
+### 4.4 Deep Reasoning & Extended Thinking Capacity `[COMPLETED]`
+- [x] Support for flagship reasoning models:
+  - **DeepSeek-R1 Distill 70B**, **DeepSeek-R1 Distill 32B**, **Gemini 2.0 Flash Thinking**, and Groq reasoning endpoints.
+- [x] **Collapsible Thinking Trace UI Component** (`ThinkingTrace.tsx`):
   - Render thought processes inside an expandable `<ThinkingTrace>` component with real-time streaming pulses.
   - Separates internal reasoning (mathematical derivations, proof strategies, structural planning) from the final generated LaTeX code.
-- [ ] Configurable reasoning effort (Low / Medium / High / Deep) in the AI settings modal.
+- [x] Configurable reasoning effort (Low / Medium / High / Deep) in the AI settings modal and settings store.
 
-### 4.5 Literature Understanding: Multi-Modal PDF & Base Paper Ingestion `[TODO]`
-- [ ] **Multi-Modal Research Paper Ingestion**:
+### 4.5 Literature Understanding: Multi-Modal PDF & Base Paper Ingestion `[COMPLETED]`
+- [x] **Multi-Modal Research Paper Ingestion** (`ReferencePapersView.tsx`):
   - Dedicated "Reference Papers" drop zone in the workspace: upload base research PDFs (e.g., arXiv downloads, conference papers).
-  - Server-side PDF extraction parsing text, equations, tables, and references from uploaded base papers.
-- [ ] **Literature Review & Grounded Manuscript Writing**:
+  - Client-side hardware-accelerated PDF extraction parsing text, equations, tables, and references from uploaded base papers via `pdfjs-dist`.
+- [x] **Literature Review & Grounded Manuscript Writing**:
   - Ground AI responses on uploaded papers to draft Literature Reviews and Related Work sections with zero hallucinations.
   - Automatic extraction of baseline data to build comparative benchmark tables (`booktabs`).
   - Extract and format cited papers directly into clean BibTeX entries appended to `references.bib`.
@@ -245,13 +245,13 @@ flowchart TB
 - [x] Predicts equation completions, math symbols, `\item` enumerations, and academic sentence continuations.
 - [x] Standard editor shortcuts: `Tab` to accept ghost text, `Esc` to dismiss, `⌥\` / `Alt+\` to trigger. Copilot toggle badge in editor toolbar.
 
-### 4.7 AI Writing Detection Analysis & Academic Humanizer Engine `[TODO]`
-- [ ] **AI Writing Detection Scanner**:
+### 4.7 AI Writing Detection Analysis & Academic Humanizer Engine `[COMPLETED]`
+- [x] **AI Writing Detection Scanner** (`HumanizerDetectorView.tsx`):
   - Real-time sentence-level perplexity and burstiness evaluator.
   - Visual heatmap overlay highlighting robotic, repetitive, or formulaic sentences.
   - Overall originality / human-writing score indicator.
-- [ ] **Academic Humanizer Engine**:
-  - 1-Click **"Humanize Selection"** action.
+- [x] **Academic Humanizer Engine** (`HumanizerDetectorView.tsx`):
+  - 1-Click **"Humanize Selection"** and document action.
   - Strips synthetic AI clichés (*"delve into"*, *"testament to"*, *"pivotal role"*, *"moreover"*, *"furthermore"*, *"in conclusion"*).
   - Rewrites text with authentic academic rhythm, varied sentence lengths, natural signposting, and field-appropriate scientific vocabulary while strictly preserving technical accuracy and LaTeX math environments.
 

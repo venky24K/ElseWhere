@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useProjectStore } from './useProjectStore';
 import { useAiStore } from './useAiStore';
 import { LATEXER_AGENT_TOOLS, executeAgentTool } from '../services/agentTools';
-import { sendAiAgentStep, type AgentApiMessage } from '../services/aiApi';
+import { sendAiAgentStep, sendAiGeneratePlanRequest, type AgentApiMessage, type PlanStep } from '../services/aiApi';
 import { buildAgentSystemPrompt, formatUserGoalMessage } from '../services/prompts';
 
 export interface PendingEdit {
@@ -44,11 +44,19 @@ interface AgentState {
   logs: AgentStepLog[];
   error: string | null;
   completed: boolean;
+  agentAbortController: AbortController | null;
+
+  // Plan Preview State
+  plan: PlanStep[] | null;
+  isPlanning: boolean;
 
   /** Files staged for review: path → PendingEdit */
   pendingEdits: Record<string, PendingEdit>;
 
   // Actions
+  generatePlan: (goal: string) => Promise<void>;
+  approvePlanAndStart: () => Promise<void>;
+  cancelPlan: () => void;
   startAgentTask: (goal: string) => Promise<void>;
   stopAgent: () => void;
   clearAgentLogs: () => void;
@@ -107,7 +115,52 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   logs: [],
   error: null,
   completed: false,
+  agentAbortController: null,
+  plan: null,
+  isPlanning: false,
   pendingEdits: {},
+
+  generatePlan: async (goal: string) => {
+    const trimmedGoal = goal.trim();
+    if (!trimmedGoal) return;
+
+    const projectStore = useProjectStore.getState();
+    const aiStore = useAiStore.getState();
+    const files = Object.keys(projectStore.files);
+    const activeFile = projectStore.activeFilePath || 'main.tex';
+
+    set({ isPlanning: true, currentGoal: trimmedGoal, error: null });
+
+    try {
+      const plan = await sendAiGeneratePlanRequest({
+        goal: trimmedGoal,
+        files,
+        activeFile,
+        model: aiStore.selectedModel,
+        apiKey: aiStore.provider === 'groq' ? aiStore.groqKey : aiStore.geminiKey,
+        provider: aiStore.provider,
+      });
+
+      set({ plan, isPlanning: false });
+    } catch (err: any) {
+      set({
+        isPlanning: false,
+        error: `Failed to generate plan: ${err.message}`,
+      });
+    }
+  },
+
+  approvePlanAndStart: async () => {
+    const goal = get().currentGoal;
+    set({ plan: null });
+    if (goal) {
+      await get().startAgentTask(goal);
+    }
+  },
+
+  cancelPlan: () => {
+    set({ plan: null, isPlanning: false });
+  },
 
   startAgentTask: async (goal: string) => {
     const trimmedGoal = goal.trim();
@@ -130,6 +183,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       files: fileList,
     });
 
+    const controller = new AbortController();
+
     set({
       isRunning: true,
       currentGoal: trimmedGoal,
@@ -137,6 +192,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       logs: [],
       error: null,
       completed: false,
+      agentAbortController: controller,
+      plan: null,
     });
 
     const messages: AgentApiMessage[] = [
@@ -149,8 +206,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     try {
       while (stepCounter < maxSteps) {
-        if (!get().isRunning) {
-          // User pressed Stop
+        if (!get().isRunning || controller.signal.aborted) {
           break;
         }
 
@@ -165,6 +221,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           apiKey: aiStore.provider === 'groq' ? aiStore.groqKey : aiStore.geminiKey,
           provider: aiStore.provider,
           temperature: 0.2,
+          signal: controller.signal,
         });
 
         const assistantMsg = response.message;
@@ -187,6 +244,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             ],
             isRunning: false,
             completed: true,
+            agentAbortController: null,
           }));
           break;
         }
@@ -230,7 +288,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
         // Execute each tool call sequentially
         for (let i = 0; i < toolCalls.length; i++) {
-          if (!get().isRunning) break;
+          if (!get().isRunning || controller.signal.aborted) break;
 
           const tc = toolCalls[i];
           let parsedArgs: Record<string, any> = {};
@@ -251,99 +309,115 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             ? filesSnapshot[editPath].content
             : '';
 
-          // Execute tool against local virtual workspace
-          const toolResult = await executeAgentTool(tc.function.name, parsedArgs);
+          const result = await executeAgentTool(tc.function.name, parsedArgs);
 
-          // If this was a file-modifying tool and it succeeded, stage as pending
-          if (isWriteTool && editPath && toolResult.success) {
-            const newContent = useProjectStore.getState().files[editPath]?.content ?? '';
-            if (newContent !== originalContent) {
-              const { addedLines, removedLines } = computeDiffStats(originalContent, newContent);
-
-              // Stage the pending edit
-              set((state) => ({
-                pendingEdits: {
-                  ...state.pendingEdits,
-                  [editPath]: {
-                    path: editPath,
-                    originalContent,
-                    newContent,
-                    addedLines,
-                    removedLines,
-                  },
-                },
-              }));
-
-              // Enrich the diff result with stats
-              if (toolResult.diff) {
-                toolResult.diff.addedLines = addedLines;
-                toolResult.diff.removedLines = removedLines;
-              } else {
-                toolResult.diff = {
-                  path: editPath,
-                  target: '',
-                  replacement: '',
-                  addedLines,
-                  removedLines,
-                };
-              }
-
-              // Focus the active file so user can review the diff immediately
-              useProjectStore.getState().setActiveFile(editPath);
-            }
-          }
-
-          // Update tool log in UI
+          // Update tool execution log state
           set((state) => {
-            const updatedLogs = [...state.logs];
-            const currentStepLog = updatedLogs[updatedLogs.length - 1];
-            if (currentStepLog?.toolCalls && currentStepLog.toolCalls[i]) {
-              currentStepLog.toolCalls[i] = {
-                ...currentStepLog.toolCalls[i],
-                status: toolResult.success ? 'success' : 'error',
-                resultMessage: toolResult.message,
-                diff: toolResult.diff,
-              };
+            const nextLogs = [...state.logs];
+            const currentStepLog = nextLogs[nextLogs.length - 1];
+            if (currentStepLog && currentStepLog.toolCalls) {
+              const currentTc = currentStepLog.toolCalls[i];
+              if (currentTc) {
+                currentTc.status = result.success ? 'success' : 'error';
+                currentTc.resultMessage = result.message;
+                if (result.diff) {
+                  currentTc.diff = result.diff;
+                }
+              }
             }
-            return { logs: updatedLogs };
+            return { logs: nextLogs };
           });
 
-          // Add tool output message for the next model turn
+          // Stage pending edit if modification tool succeeded
+          if (isWriteTool && result.success && editPath) {
+            const updatedContent = useProjectStore.getState().files[editPath]?.content ?? '';
+            const diffStats = computeDiffStats(originalContent, updatedContent);
+
+            set((state) => ({
+              pendingEdits: {
+                ...state.pendingEdits,
+                [editPath]: {
+                  path: editPath,
+                  originalContent,
+                  newContent: updatedContent,
+                  addedLines: diffStats.addedLines,
+                  removedLines: diffStats.removedLines,
+                },
+              },
+            }));
+          }
+
+          // Append tool result message
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
             name: tc.function.name,
             content: JSON.stringify({
-              success: toolResult.success,
-              message: toolResult.message,
-              data: toolResult.data,
+              success: result.success,
+              message: result.message,
+              data: result.data,
             }),
           });
         }
       }
 
-      if (stepCounter >= maxSteps && get().isRunning) {
-        set({
+      if (stepCounter >= maxSteps) {
+        set((state) => ({
           isRunning: false,
           completed: true,
-          error: `Reached maximum step limit (${maxSteps} steps).`,
-        });
+          agentAbortController: null,
+          logs: [
+            ...state.logs,
+            {
+              stepIndex: stepCounter + 1,
+              completedSummary: `Reached max step limit (${maxSteps} steps). Staged edits are ready for review.`,
+              timestamp: Date.now(),
+            },
+          ],
+        }));
       }
     } catch (err: any) {
-      console.error('Agent execution error:', err);
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+        set((state) => ({
+          isRunning: false,
+          agentAbortController: null,
+          logs: [
+            ...state.logs,
+            {
+              stepIndex: state.currentStep,
+              completedSummary: '⏹️ Agent execution stopped by user.',
+              timestamp: Date.now(),
+            },
+          ],
+        }));
+        return;
+      }
+
       set({
         isRunning: false,
-        error: err.message || 'Agent execution failed.',
+        agentAbortController: null,
+        error: `Agent Error: ${err.message || 'Execution failed.'}`,
       });
     }
   },
 
   stopAgent: () => {
-    set({ isRunning: false });
+    const controller = get().agentAbortController;
+    if (controller) {
+      controller.abort();
+    }
+    set({ isRunning: false, agentAbortController: null });
   },
 
   clearAgentLogs: () => {
-    set({ logs: [], error: null, completed: false, currentStep: 0, currentGoal: '' });
+    set({
+      logs: [],
+      currentGoal: '',
+      currentStep: 0,
+      error: null,
+      completed: false,
+      plan: null,
+    });
   },
 
   acceptEdit: (path: string) => {
@@ -364,7 +438,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       if (edit.originalContent) {
         useProjectStore.getState().updateFileContent(path, edit.originalContent);
       } else {
-        // Was newly created
         useProjectStore.getState().deleteFile(path);
       }
     }

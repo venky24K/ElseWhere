@@ -2,7 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import { compileWorkspace, detectEngines, pdfCache } from './compiler.js';
 import { CompileRequest } from './types.js';
-import { dispatchAiChat, dispatchAiInlineEdit, dispatchAiAgentStep, dispatchAiInlineCompletion } from './aiService.js';
+import {
+  dispatchAiChat,
+  dispatchAiInlineEdit,
+  dispatchAiAgentStep,
+  dispatchAiInlineCompletion,
+  dispatchAiHumanize,
+  dispatchAiDetect,
+  dispatchPaperSynthesis,
+  dispatchAiGeneratePlan,
+} from './aiService.js';
 
 // Load .env automatically if present
 try {
@@ -80,9 +89,12 @@ app.get('/api/ai/status', (req, res) => {
     defaultProvider: hasGroq ? 'groq' : 'gemini',
     supportedModels: [
       { id: 'openai/gpt-oss-120b', name: 'OpenAI GPT-OSS 120B (Groq • Deep Reasoning & MoE)', provider: 'groq' },
+      { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B (Groq • CoT Reasoning)', provider: 'groq', isReasoning: true },
+      { id: 'deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill 32B (Groq • High-Speed Math & Logic)', provider: 'groq', isReasoning: true },
       { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Groq • High-Speed Multimodal & Tools)', provider: 'groq' },
       { id: 'openai/gpt-oss-20b', name: 'OpenAI GPT-OSS 20B (Groq • Fast Lightweight Execution)', provider: 'groq' },
       { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (Google • High-Speed Agentic & Production)', provider: 'gemini' },
+      { id: 'gemini-2.0-flash-thinking-exp-01-21', name: 'Gemini 2.0 Flash Thinking (Google • Native Reasoning Trace)', provider: 'gemini', isReasoning: true },
       { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Google • Fast Workhorse & Coding)', provider: 'gemini' },
       { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro (Google • Deep Reasoning & Complex Tasks)', provider: 'gemini' },
     ],
@@ -91,12 +103,12 @@ app.get('/api/ai/status', (req, res) => {
 
 app.post('/api/ai/chat', async (req, res) => {
   try {
-    const { prompt, history, documentContext, selectedText, model, apiKey, provider } = req.body;
+    const { prompt, history, documentContext, selectedText, model, apiKey, provider, reasoningEffort } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    const reply = await dispatchAiChat({
+    const result = await dispatchAiChat({
       provider,
       apiKey,
       model,
@@ -104,9 +116,10 @@ app.post('/api/ai/chat', async (req, res) => {
       history,
       documentContext,
       selectedText,
+      reasoningEffort,
     });
 
-    res.json({ reply });
+    res.json({ reply: result.reply, thought: result.thought });
   } catch (err: any) {
     console.error('AI Chat Error:', err);
     res.status(500).json({ error: err.message || 'AI request failed' });
@@ -178,6 +191,99 @@ app.post('/api/ai/agent-step', async (req, res) => {
   } catch (err: any) {
     console.error('AI Agent Step Error:', err);
     res.status(500).json({ error: err.message || 'Agent step failed' });
+  }
+});
+
+// Phase 4: Academic Humanizer
+app.post('/api/ai/humanize', async (req, res) => {
+  try {
+    const { text, model, apiKey, provider, academicStyle } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+
+    const result = await dispatchAiHumanize({
+      text,
+      model,
+      apiKey,
+      provider,
+      academicStyle,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('Humanize Error:', err);
+    res.status(500).json({ error: err.message || 'Humanize failed' });
+  }
+});
+
+// Phase 4: AI Writing Detection Scanner
+app.post('/api/ai/detect-ai', async (req, res) => {
+  try {
+    const { text, model, apiKey, provider } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+
+    const result = await dispatchAiDetect({
+      text,
+      model,
+      apiKey,
+      provider,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('AI Detect Error:', err);
+    res.status(500).json({ error: err.message || 'AI detection failed' });
+  }
+});
+
+// Phase 4: Literature Understanding & Paper Synthesis
+app.post('/api/papers/synthesize', async (req, res) => {
+  try {
+    const { action, papers, currentTopic, model, apiKey, provider } = req.body;
+    if (!papers || !Array.isArray(papers) || papers.length === 0) {
+      return res.status(400).json({ error: 'At least one paper is required' });
+    }
+
+    const result = await dispatchPaperSynthesis({
+      action: action || 'related_work',
+      papers,
+      currentTopic,
+      model,
+      apiKey,
+      provider,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('Paper Synthesis Error:', err);
+    res.status(500).json({ error: err.message || 'Paper synthesis failed' });
+  }
+});
+
+// Phase 4: Agent Plan Generation
+app.post('/api/ai/plan', async (req, res) => {
+  try {
+    const { goal, files, activeFile, model, apiKey, provider } = req.body;
+    if (!goal) {
+      return res.status(400).json({ error: 'Goal is required' });
+    }
+
+    const plan = await dispatchAiGeneratePlan({
+      goal,
+      files: files || [],
+      activeFile,
+      model,
+      apiKey,
+      provider,
+    });
+
+    res.json({ plan });
+  } catch (err: any) {
+    console.error('Agent Plan Error:', err);
+    res.status(500).json({ error: err.message || 'Agent plan generation failed' });
   }
 });
 

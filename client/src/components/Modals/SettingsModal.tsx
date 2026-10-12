@@ -79,6 +79,8 @@ export const SettingsModal: React.FC = () => {
     selectedModel,
     setSelectedModel,
     supportedModels,
+    reasoningEffort,
+    setReasoningEffort,
   } = useAiStore();
 
   if (!isOpen) return null;
@@ -594,6 +596,20 @@ export const SettingsModal: React.FC = () => {
                           {m.name}
                         </option>
                       ))}
+                  </select>
+                </div>
+
+                <div className="pt-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Extended Reasoning Effort</label>
+                  <select
+                    value={reasoningEffort}
+                    onChange={(e) => setReasoningEffort(e.target.value as any)}
+                    className="w-full bg-card border border-border-subtle text-text-primary text-xs px-3 py-2 rounded-lg outline-none cursor-pointer"
+                  >
+                    <option value="low">Low (Fastest response, minimal CoT)</option>
+                    <option value="medium">Medium (Standard scientific derivation)</option>
+                    <option value="high">High (Deep analytical rigor & proof planning)</option>
+                    <option value="deep">Deep (Exhaustive mathematical verification)</option>
                   </select>
                 </div>
               </div>
