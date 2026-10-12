@@ -12,7 +12,7 @@
 | **Phase 1** | **Compilation Engine & Diagnostics** | Node.js Sandboxes + Tectonic/Multi-Engine + Diagnostic Parser | `[COMPLETED]` | Delivered |
 | **Phase 2** | **Design Token System** | Tailwind CSS v4 + Semantic `@theme` + Dark Theme | `[COMPLETED]` | Delivered |
 | **Phase 3** | **Dual AI Copilot & VS Code Activity Bar** | Groq LPU + Gemini + VS Code Activity Bar + Multi-View Sidebar | `[COMPLETED]` | Delivered |
-| **Phase 4** | **Agentic AI & Research Intelligence** | Dual-Mode ChatPanel + Autonomous Agent + Tool Calling + Reasoning + Base Paper Reading + Humanizer | `[COMPLETED]` | Delivered |
+| **Phase 4** | **Agentic AI & Research Intelligence** | Autonomous Agent + Copilot Chat + Universal Academic Search (250M+ Papers) + Base Paper Reading + Humanizer | `[COMPLETED]` | Delivered |
 | **Phase 5** | **Professional IDE Workspace & Navigation** | Application Menu Bar + Editor Tab Pills + Settings Hub + PDF Preview Controls | `[COMPLETED]` | Delivered |
 | **Phase 6** | **Overleaf Industrial Differentiators** | AI Doctor, SyncTeX, Smart DOI/BibTeX, TikZ Studio, PDF Diff, Pandoc/Word Export | `[PLANNED]` | Q3 2026 |
 | **Phase 7** | **Sandboxing, Decoupled Queue & WASM** | Docker/Firecracker, BullMQ + Redis, Client-side WASM TeX (Offline) | `[PLANNED]` | Q3 2026 |
@@ -171,11 +171,14 @@ flowchart TB
 
 ## 🧠 Phase 4: Agentic Intelligence, Research Synthesis & Writing Humanization `[COMPLETED]`
 
-### 4.1 ChatPanel Architecture & Dual-Mode AI Workspace (`AiPanel.tsx`) `[COMPLETED]`
-- [x] **Dual-Mode Switcher Interface**:
-  - Segmented toggle switching between **⚡ Agent Mode**, **💬 Copilot Chat Mode**, **📚 Reference Papers**, and **🛡️ Academic Humanizer**.
-  - Provider & model indicator badges (Groq LPU / Google Gemini with model short name).
-  - Header actions: Clear History (context-dependent for Chat vs. Agent) and AI Settings dialog launcher.
+### 4.1 ChatPanel Architecture & Activity Bar Rail Navigation (`ActivityBar.tsx`, `AiPanel.tsx`) `[COMPLETED]`
+- [x] **Activity Bar Rail First-Class Navigation**:
+  - Reorganized AI and research tools into dedicated top-level icons on the leftmost vertical Activity Bar rail:
+    - 🤖 **Autonomous Agent** (`agent`): Goal composer, multi-step tool calls, execution diffs.
+    - 💬 **Copilot Chat** (`chat`): Multi-turn conversational AI with active model indicator.
+    - 📖 **Reference Papers** (`papers`): Universal academic web search, download redirection, literature synthesis.
+    - 🛡️ **AI Detector & Humanizer** (`humanizer`): Sentence perplexity scanner & academic rhythm rewriter.
+  - Removed internal pill switcher buttons from `AiPanel`, giving each panel full height and clean standard headers.
 - [x] **Copilot Chat Interface & Formatting**:
   - [x] Multi-turn conversational history maintaining author-copilot dialogue.
   - [x] Interactive LaTeX code cards with syntax badges, copy button, and 1-click Monaco cursor insertion (`insertAtCursor`).
@@ -230,9 +233,18 @@ flowchart TB
   - Separates internal reasoning (mathematical derivations, proof strategies, structural planning) from the final generated LaTeX code.
 - [x] Configurable reasoning effort (Low / Medium / High / Deep) in the AI settings modal and settings store.
 
-### 4.5 Literature Understanding: Multi-Modal PDF & Base Paper Ingestion `[COMPLETED]`
+### 4.5 Literature Understanding: Universal Academic Search & Base Paper Ingestion `[COMPLETED]`
+- [x] **Universal Academic Paper Search Engine Across the Web** (`paperSearch.ts`, `ReferencePapersView.tsx`):
+  - Concurrently queries **OpenAlex** (indexing 250M+ scholarly works) and **arXiv** with real-time deduplication.
+  - Global academic coverage across **IEEE, Nature, ACM, Springer, Elsevier, ScienceDirect, PubMed, and arXiv**.
+  - **Direct Download & Publisher Page Redirection**: Direct external links to official publisher download pages (IEEE Xplore, ScienceDirect, Nature, etc.).
+  - **Google Scholar Redirection**: 1-click links opening Google Scholar for institutional library access, proxy downloads, and citation trees.
+  - **Scope Filters**: Quick filters for `🌐 All Web`, `⚡ arXiv Direct`, and `🏛️ Journals & IEEE`.
+  - **Rich Metadata Badges**: Live citation count indicators (`★ X cites`), publisher badges, and publication years.
+  - **1-Click Workspace Ingestion**: Imports paper title, authors, year, and abstract directly into the project library with 0 manual downloads required.
+  - **1-Click BibTeX Citation**: Formatted `@article{...}` copying and instant appending to `references.bib`.
 - [x] **Multi-Modal Research Paper Ingestion** (`ReferencePapersView.tsx`):
-  - Dedicated "Reference Papers" drop zone in the workspace: upload base research PDFs (e.g., arXiv downloads, conference papers).
+  - Dedicated "My Papers" view: upload base research PDFs (e.g., arXiv downloads, conference papers).
   - Client-side hardware-accelerated PDF extraction parsing text, equations, tables, and references from uploaded base papers via `pdfjs-dist`.
 - [x] **Literature Review & Grounded Manuscript Writing**:
   - Ground AI responses on uploaded papers to draft Literature Reviews and Related Work sections with zero hallucinations.

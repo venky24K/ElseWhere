@@ -207,11 +207,18 @@ export async function sendAiHumanizeRequest(params: {
 }
 
 // Phase 4: AI Writing Detection Types & API
+export interface WordReplacement {
+  original: string;
+  replacements: string[];
+}
+
 export interface SentenceEvaluation {
   sentence: string;
   score: number;
   status: 'likely_ai' | 'mixed' | 'likely_human';
   reasons: string[];
+  suggestedRewrite?: string;
+  wordReplacements?: WordReplacement[];
 }
 
 export interface AiDetectResponse {

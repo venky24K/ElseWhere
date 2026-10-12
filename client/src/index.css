@@ -271,3 +271,20 @@ html, body, #root {
 .monaco-diff-editor:not(.side-by-side) .modified-in-monaco-diff-editor {
   left: 0px !important;
 }
+
+/* Text highlight: painted as one rectangle behind the whole sentence,
+   so it stays continuous across tokens and wrapped lines. No borders or radius. */
+.monaco-editor .ai-bg-ai     { background: rgba(244, 63, 94, 0.12); }
+.monaco-editor .ai-bg-mixed  { background: rgba(245, 158, 11, 0.12); }
+.monaco-editor .ai-bg-active { background: rgba(99, 102, 241, 0.20); }
+
+/* Gutter bar: one 3px column, full line height, so adjacent lines join into
+   a single unbroken line. Needs lineDecorationsWidth >= 8 (set in the component). */
+.monaco-editor .ai-gutter {
+  width: 3px !important;
+  margin-left: 3px;
+  border-radius: 0;
+}
+.monaco-editor .ai-gutter-ai    { background: #f43f5e; }
+.monaco-editor .ai-gutter-mixed { background: #f59e0b; }
+.monaco-editor .ai-gutter-human { background: #10b981; opacity: 0.6; }

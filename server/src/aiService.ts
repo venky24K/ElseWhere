@@ -33,6 +33,39 @@ export const KNOWN_AI_CLICHES = [
   'interplay between', 'seamlessly integrated',
 ];
 
+export const AI_WORD_SUGGESTIONS: Record<string, string[]> = {
+  'in addition,': ['', 'Furthermore,', 'Beyond this,', 'Separately,'],
+  'moreover,': ['', 'Additionally,', 'In turn,'],
+  'furthermore,': ['', 'In addition,', 'Also,'],
+  'it is important to note': ['Notably,', 'Observe that,', 'Importantly,'],
+  'it is worth noting': ['Notably,', 'Remarkably,'],
+  'notably,': ['Specifically,', 'In particular,'],
+  'in conclusion,': ['Overall,', 'In summary,'],
+  'delve into': ['examine', 'investigate', 'analyze'],
+  'delves into': ['examines', 'investigates', 'analyzes'],
+  'delving into': ['examining', 'investigating', 'analyzing'],
+  'testament to': ['evidence of', 'demonstration of'],
+  'stands as a testament': ['demonstrates', 'serves as evidence'],
+  'pivotal role': ['key role', 'central role'],
+  'plays a pivotal role': ['is critical', 'serves a key function'],
+  'sheds light on': ['clarifies', 'reveals'],
+  'shed light on': ['clarify', 'reveal'],
+  'tapestry of': ['structure of', 'variety of'],
+  'rich tapestry': ['broad array', 'diverse set'],
+  'beacon of': ['model for', 'guide for'],
+  'navigating the complexities': ['addressing challenges'],
+  'multifaceted': ['complex', 'varied'],
+  'holistic approach': ['comprehensive approach'],
+  'underscores the importance': ['emphasizes'],
+  'underscores': ['highlights', 'emphasizes'],
+  'ever-evolving landscape': ['evolving domain'],
+  'at the forefront': ['leading'],
+  'paramount importance': ['primary importance'],
+  'spearheaded by': ['led by'],
+  'interplay between': ['interaction between'],
+  'seamlessly integrated': ['integrated'],
+};
+
 export function detectClichesInText(text: string): string[] {
   if (!text) return [];
   const lower = text.toLowerCase();
@@ -112,11 +145,18 @@ export interface AiHumanizeResult {
   originalityScore: number;
 }
 
+export interface WordReplacement {
+  original: string;
+  replacements: string[];
+}
+
 export interface SentenceEvaluation {
   sentence: string;
   score: number; // 0 to 100
   status: 'likely_ai' | 'mixed' | 'likely_human';
   reasons: string[];
+  suggestedRewrite?: string;
+  wordReplacements?: WordReplacement[];
 }
 
 export interface AiDetectParams {
@@ -826,12 +866,49 @@ ${params.text}`;
 }
 
 // ================= AI Writing Detection Scanner =================
+function extractProseSentences(text: string): string[] {
+  let body = text;
+  const docStart = text.indexOf('\\begin{document}');
+  if (docStart !== -1) {
+    body = text.slice(docStart + '\\begin{document}'.length);
+  }
+  const docEnd = body.indexOf('\\end{document}');
+  if (docEnd !== -1) {
+    body = body.slice(0, docEnd);
+  }
+
+  // Filter out pure command lines
+  const lines = body.split('\n');
+  const proseLines = lines.filter((l) => {
+    const trimmed = l.trim();
+    if (!trimmed || trimmed.startsWith('%')) return false;
+    if (trimmed.startsWith('\\documentclass') || trimmed.startsWith('\\usepackage')) return false;
+    if (trimmed.startsWith('\\begin{') || trimmed.startsWith('\\end{')) return false;
+    if (trimmed.startsWith('\\def') || trimmed.startsWith('\\newcommand')) return false;
+    if (trimmed.startsWith('\\bibliographystyle') || trimmed.startsWith('\\bibliography')) return false;
+    if (trimmed.startsWith('\\includegraphics') || trimmed.startsWith('\\centering')) return false;
+    if (trimmed.startsWith('\\label{') || trimmed.startsWith('\\caption{')) return false;
+    return true;
+  });
+
+  const proseText = proseLines.join(' ');
+  const parsed = proseText
+    .split(/(?<=[.?!])\s+(?=[A-Z])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 10 && !s.startsWith('\\') && s.split(/\s+/).length >= 3);
+
+  return parsed;
+}
+
 export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetectResult> {
   const rawText = params.text.trim();
-  const sentences = rawText
-    .split(/(?<=[.?!])\s+(?=[A-Z\\])/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 5);
+  const proseSentences = extractProseSentences(rawText);
+  const sentences = proseSentences.length >= 2
+    ? proseSentences
+    : rawText
+        .split(/(?<=[.?!])\s+(?=[A-Z\\])/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 5 && !s.startsWith('\\documentclass') && !s.startsWith('\\usepackage'));
 
   const detectedCliches = detectClichesInText(rawText);
 
@@ -851,12 +928,26 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
   const sentenceBreakdown: SentenceEvaluation[] = sentences.map((s) => {
     const sLower = s.toLowerCase();
     const reasons: string[] = [];
+    const wordReplacements: WordReplacement[] = [];
+    let rewriteCandidate = s;
     let penalty = 0;
 
     for (const starter of formulaicStarters) {
       if (sLower.startsWith(starter)) {
         reasons.push(`Formulaic AI transition ("${starter}")`);
         penalty += 30;
+
+        const options = AI_WORD_SUGGESTIONS[starter] || [''];
+        wordReplacements.push({
+          original: s.slice(0, starter.length),
+          replacements: options.map((opt) => (opt === '' ? '(remove)' : opt)),
+        });
+
+        // Generate clean rewrite by stripping the formulaic starter and capitalizing the next word
+        const rest = s.slice(starter.length).trimStart();
+        if (rest.length > 0) {
+          rewriteCandidate = rest.charAt(0).toUpperCase() + rest.slice(1);
+        }
       }
     }
 
@@ -864,7 +955,28 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
       if (sLower.includes(cliche)) {
         reasons.push(`Synthetic cliché ("${cliche}")`);
         penalty += 25;
+
+        const options = AI_WORD_SUGGESTIONS[cliche];
+        if (options && options.length > 0) {
+          const regex = new RegExp(cliche.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+          const match = rewriteCandidate.match(regex);
+          if (match) {
+            wordReplacements.push({
+              original: match[0],
+              replacements: options,
+            });
+            rewriteCandidate = rewriteCandidate.replace(regex, options[0]);
+          }
+        }
       }
+    }
+
+    if (rewriteCandidate.toLowerCase().includes('in order to')) {
+      rewriteCandidate = rewriteCandidate.replace(/in order to/gi, 'to');
+      wordReplacements.push({
+        original: 'in order to',
+        replacements: ['to'],
+      });
     }
 
     // Monotonous sentence length penalty
@@ -879,11 +991,15 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
     if (score < 50) status = 'likely_ai';
     else if (score < 75) status = 'mixed';
 
+    const suggestedRewrite = rewriteCandidate !== s ? rewriteCandidate.trim() : undefined;
+
     return {
       sentence: s,
       score,
       status,
       reasons,
+      suggestedRewrite,
+      wordReplacements: wordReplacements.length > 0 ? wordReplacements : undefined,
     };
   });
 

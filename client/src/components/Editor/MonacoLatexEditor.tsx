@@ -1,13 +1,85 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor, { DiffEditor, type Monaco, type OnMount } from '@monaco-editor/react';
 import { setupMonacoLatex } from './latexLanguage';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useAiStore } from '../../store/useAiStore';
 import { useAgentStore } from '../../store/useAgentStore';
-import { sendAiInlineCompletionRequest } from '../../services/aiApi';
+import { useDetectionStore } from '../../store/useDetectionStore';
+import { sendAiInlineCompletionRequest, sendAiHumanizeRequest } from '../../services/aiApi';
 import { InlineCommandPalette } from '../AI/InlineCommandPalette';
 import { useSettingsStore } from '../../store/useSettingsStore';
-import { FileText, Image as ImageIcon, X, FileCode, BookOpen, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  FileText,
+  Image as ImageIcon,
+  X,
+  FileCode,
+  BookOpen,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  ShieldCheck,
+} from 'lucide-react';
+
+/* -------------------------------------------------------------------------- */
+/*  Static data & helpers                                                     */
+/* -------------------------------------------------------------------------- */
+
+const SNIPPETS: Array<[label: string, insert: string, doc: string]> = [
+  ['\\begin{equation}', '\\begin{equation}\n\t$0\n\\end{equation}', 'Numbered display equation'],
+  [
+    '\\begin{figure}',
+    '\\begin{figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\linewidth]{$1}\n\t\\caption{$2}\n\t\\label{fig:$3}\n\\end{figure}',
+    'Centered figure with caption and label',
+  ],
+  [
+    '\\begin{table}',
+    '\\begin{table}[h!]\n\t\\centering\n\t\\caption{$1}\n\t\\label{tab:$2}\n\t\\begin{tabular}{${3:lcc}}\n\t\t\\toprule\n\t\t$4 \\\\\n\t\t\\midrule\n\t\t$0 \\\\\n\t\t\\bottomrule\n\t\\end{tabular}\n\\end{table}',
+    'Table with booktabs rules',
+  ],
+  ['\\begin{itemize}', '\\begin{itemize}\n\t\\item $0\n\\end{itemize}', 'Bulleted list'],
+  ['\\begin{enumerate}', '\\begin{enumerate}\n\t\\item $0\n\\end{enumerate}', 'Numbered list'],
+  ['\\frac{}{}', '\\frac{$1}{$2}', 'Fraction'],
+  ['\\section{}', '\\section{$1}', 'Section heading'],
+  ['\\subsection{}', '\\subsection{$1}', 'Subsection heading'],
+  ['\\textbf{}', '\\textbf{$1}', 'Bold'],
+  ['\\textit{}', '\\textit{$1}', 'Italic'],
+  ['\\cite{}', '\\cite{$1}', 'Citation'],
+  ['\\ref{}', '\\ref{$1}', 'Cross-reference'],
+];
+
+const ROOT_FILE = 'main.tex';
+const normalizePath = (p: string) => p.replace(/^\.?\//, '');
+const diagnosticMatches = (file: string | undefined, active: string) => {
+  if (!file) return active === ROOT_FILE; // file-less diagnostics belong to the root document
+  const f = normalizePath(file);
+  const a = normalizePath(active);
+  return f === a || f.endsWith(`/${a}`);
+};
+
+type FlagStatus = 'likely_ai' | 'mixed' | 'likely_human';
+const STATUS_RANK: Record<FlagStatus, number> = { likely_human: 0, mixed: 1, likely_ai: 2 };
+const GUTTER_CLASS: Record<FlagStatus, string> = {
+  likely_ai: 'ai-gutter ai-gutter-ai',
+  mixed: 'ai-gutter ai-gutter-mixed',
+  likely_human: 'ai-gutter ai-gutter-human',
+};
+
+const tabIconFor = (path: string, isBinary?: boolean) => {
+  if (isBinary || /\.(png|jpe?g|gif|webp|svg|eps)$/i.test(path)) return <ImageIcon size={13} className="shrink-0 text-emerald-500" />;
+  if (path.endsWith('.tex')) return <FileText size={13} className="shrink-0 text-sky-500" />;
+  if (path.endsWith('.bib')) return <BookOpen size={13} className="shrink-0 text-amber-500" />;
+  if (path.endsWith('.cls') || path.endsWith('.sty')) return <FileCode size={13} className="shrink-0 text-text-muted" />;
+  return <FileText size={13} className="shrink-0 text-text-muted" />;
+};
+
+const iconBtn =
+  'inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-text-muted transition-colors hover:bg-card-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40';
+
+/* -------------------------------------------------------------------------- */
+/*  Component                                                                 */
+/* -------------------------------------------------------------------------- */
 
 export const MonacoLatexEditor: React.FC = () => {
   const {
@@ -25,521 +97,703 @@ export const MonacoLatexEditor: React.FC = () => {
     registerJumpToLine,
   } = useProjectStore();
 
-  const {
-    openInlineCommand,
-    registerEditorActions,
-  } = useAiStore();
+  const { openInlineCommand, registerEditorActions } = useAiStore();
 
-  const {
-    fontSize,
-    fontFamily,
-    lineHeight,
-    wordWrap,
-    lineNumbers,
-    bracketPairColorization,
-    editorTheme,
-  } = useSettingsStore();
+  const { detectResult, scanFilePath, flags, activeFlagIndex, showHighlightsInEditor, nextFlag, prevFlag } =
+    useDetectionStore();
+
+  const { fontSize, fontFamily, lineHeight, wordWrap, lineNumbers, bracketPairColorization, editorTheme } =
+    useSettingsStore();
+
+  const pendingEdits = useAgentStore((s) => s.pendingEdits);
+  const acceptEdit = useAgentStore((s) => s.acceptEdit);
+  const rejectEdit = useAgentStore((s) => s.rejectEdit);
 
   const editorRef = useRef<any>(null);
   const diffEditorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
-  const autoCompileTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const inlineProviderRef = useRef<any>(null);
+  const autoCompileTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
+  const detectionDecosRef = useRef<any>(null);
+  const ghostInflightRef = useRef(0);
+  const actionsRef = useRef<any>({});
 
-  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabPath: string } | null>(null);
+  // Bumped when the editor mounts or switches model, so marker/decoration
+  // effects re-run against the live editor instead of a disposed one.
+  const [editorTick, setEditorTick] = useState(0);
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; tabPath: string } | null>(null);
 
-  const handleTabContextMenu = (e: React.MouseEvent, tabPath: string) => {
-    e.preventDefault();
-    setTabContextMenu({ x: e.clientX, y: e.clientY, tabPath });
-  };
-
-  useEffect(() => {
-    const handleClose = () => setTabContextMenu(null);
-    if (tabContextMenu) {
-      window.addEventListener('click', handleClose);
-      return () => window.removeEventListener('click', handleClose);
-    }
-  }, [tabContextMenu]);
-
-  const pendingEdits = useAgentStore((state) => state.pendingEdits);
-  const acceptEdit = useAgentStore((state) => state.acceptEdit);
-  const rejectEdit = useAgentStore((state) => state.rejectEdit);
-
+  const activeFile = files[activeFilePath];
   const pendingEdit = pendingEdits[activeFilePath];
   const editedFilePaths = Object.keys(pendingEdits);
   const currentEditIndex = editedFilePaths.indexOf(activeFilePath);
 
+  // The diff view can be edited by hand. Keep that draft separate from the file
+  // until the user accepts, so Reject really leaves the document untouched.
+  const diffDraftRef = useRef<{ path: string; value: string } | null>(null);
+  const pathRef = useRef(activeFilePath);
+  pathRef.current = activeFilePath;
+
+  /* ----------------------------- Accept / reject ---------------------------- */
+
+  const goToNextPendingFile = (remaining: string[]) => {
+    if (remaining.length > 0) setActiveFile(remaining[0]);
+  };
+
   const handleAcceptCurrent = () => {
+    const draft = diffDraftRef.current?.path === activeFilePath ? diffDraftRef.current.value : null;
     acceptEdit(activeFilePath);
-    const remaining = editedFilePaths.filter((p) => p !== activeFilePath);
-    if (remaining.length > 0) {
-      setActiveFile(remaining[0]);
-    }
+    if (draft !== null && draft !== pendingEdit?.newContent) updateFileContent(activeFilePath, draft);
+    diffDraftRef.current = null;
+    goToNextPendingFile(editedFilePaths.filter((p) => p !== activeFilePath));
   };
 
   const handleRejectCurrent = () => {
     rejectEdit(activeFilePath);
-    const remaining = editedFilePaths.filter((p) => p !== activeFilePath);
-    if (remaining.length > 0) {
-      setActiveFile(remaining[0]);
+    diffDraftRef.current = null;
+    goToNextPendingFile(editedFilePaths.filter((p) => p !== activeFilePath));
+  };
+
+  // Monaco commands are registered once, so they call through a ref to stay current.
+  const acceptRef = useRef(handleAcceptCurrent);
+  const rejectRef = useRef(handleRejectCurrent);
+  acceptRef.current = handleAcceptCurrent;
+  rejectRef.current = handleRejectCurrent;
+
+  const stepEditedFile = (delta: 1 | -1) => {
+    if (editedFilePaths.length <= 1) return;
+    const idx = (currentEditIndex + delta + editedFilePaths.length) % editedFilePaths.length;
+    setActiveFile(editedFilePaths[idx]);
+  };
+
+  /* ------------------------------- Tab context ------------------------------ */
+
+  useEffect(() => {
+    if (!tabMenu) return;
+    const close = () => setTabMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [tabMenu]);
+
+  // Tab shortcuts are scoped to the editor area so ⌘W / ⌘1-9 don't fire from other panels.
+  const handleEditorAreaKeyDown = (e: React.KeyboardEvent) => {
+    if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+    if (e.key.toLowerCase() === 'w') {
+      e.preventDefault();
+      closeTab(activeFilePath);
+    } else if (e.key >= '1' && e.key <= '9') {
+      const target = openTabs[parseInt(e.key, 10) - 1];
+      if (target) {
+        e.preventDefault();
+        setActiveFile(target);
+      }
     }
   };
 
-  const handlePrevEditedFile = () => {
-    if (editedFilePaths.length <= 1) return;
-    const prevIdx = (currentEditIndex - 1 + editedFilePaths.length) % editedFilePaths.length;
-    setActiveFile(editedFilePaths[prevIdx]);
-  };
+  /* ------------------------------ Content & compile ------------------------- */
 
-  const handleNextEditedFile = () => {
-    if (editedFilePaths.length <= 1) return;
-    const nextIdx = (currentEditIndex + 1) % editedFilePaths.length;
-    setActiveFile(editedFilePaths[nextIdx]);
-  };
-
-  // Keyboard shortcuts for accepting/rejecting diff in editor
-  useEffect(() => {
-    if (!pendingEdit) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleAcceptCurrent();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Backspace') {
-        e.preventDefault();
-        handleRejectCurrent();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pendingEdit, activeFilePath, editedFilePaths]);
-
-  const activeFile = files[activeFilePath];
-
-  // Auto-compilation debounce
   const handleContentChange = (value: string | undefined) => {
     if (value === undefined || !activeFile || activeFile.isBinary) return;
     updateFileContent(activeFilePath, value);
 
     if (autoCompile) {
-      if (autoCompileTimerRef.current) {
-        clearTimeout(autoCompileTimerRef.current);
-      }
-      autoCompileTimerRef.current = setTimeout(() => {
-        compileNow();
-      }, 1500);
+      clearTimeout(autoCompileTimerRef.current);
+      autoCompileTimerRef.current = setTimeout(() => compileNow(), 1500);
     }
   };
 
-  // Dispose inline provider on component unmount
-  useEffect(() => {
-    return () => {
-      if (inlineProviderRef.current) {
-        inlineProviderRef.current.dispose();
-        inlineProviderRef.current = null;
-      }
-    };
+  const disposeEditorProviders = useCallback(() => {
+    disposablesRef.current.forEach((d) => d.dispose());
+    disposablesRef.current = [];
   }, []);
 
-  // Setup Monaco on mount
+  useEffect(
+    () => () => {
+      clearTimeout(autoCompileTimerRef.current);
+      disposeEditorProviders();
+    },
+    [disposeEditorProviders]
+  );
+
+  /* ------------------------------- Editor mount ----------------------------- */
+
+  const applyReplacementToEditor = useCallback(
+    (sentence: string, replacement: string, flagIndex?: number) => {
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!editor || !model) {
+        const curContent = useProjectStore.getState().files[activeFilePath]?.content || '';
+        if (curContent.includes(sentence)) {
+          useProjectStore.getState().updateFileContent(activeFilePath, curContent.replace(sentence, replacement));
+          if (flagIndex !== undefined) {
+            useDetectionStore.getState().resolveFlag(flagIndex, replacement);
+          }
+        }
+        return;
+      }
+
+      // Escape special regex characters and allow any whitespace/newlines between words
+      const words = sentence.trim().split(/\s+/);
+      const pattern = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+      let targetRange: any = null;
+
+      try {
+        const matches = model.findMatches(pattern, false, true /* isRegex */, true, null, false);
+        if (matches.length > 0) {
+          targetRange = matches[0].range;
+        }
+      } catch {}
+
+      if (!targetRange) {
+        const litMatches = model.findMatches(sentence, false, false, true, null, false);
+        if (litMatches.length > 0) {
+          targetRange = litMatches[0].range;
+        }
+      }
+
+      if (targetRange) {
+        editor.executeEdits('ai-fix', [
+          {
+            range: targetRange,
+            text: replacement,
+            forceMoveMarkers: true,
+          },
+        ]);
+        editor.pushUndoStop();
+        editor.revealRangeInCenterIfOutsideViewport(targetRange);
+        editor.focus();
+      } else {
+        const fullContent = model.getValue();
+        if (fullContent.includes(sentence)) {
+          useProjectStore.getState().updateFileContent(activeFilePath, fullContent.replace(sentence, replacement));
+        }
+      }
+
+      if (flagIndex !== undefined) {
+        useDetectionStore.getState().resolveFlag(flagIndex, replacement);
+      }
+    },
+    [activeFilePath]
+  );
+
+  const applyWordReplacement = useCallback(
+    (flagIndex: number, originalWord: string, replacementWord: string) => {
+      const flag = useDetectionStore.getState().flags.find((f) => f.index === flagIndex);
+      if (!flag) return;
+      const rep = replacementWord === '(remove)' ? '' : replacementWord;
+      let newSentence = flag.sentence;
+      if (rep === '') {
+        const rx = new RegExp(`^${originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i');
+        if (rx.test(newSentence)) {
+          newSentence = newSentence.replace(rx, '');
+          if (newSentence.length > 0) {
+            newSentence = newSentence.charAt(0).toUpperCase() + newSentence.slice(1);
+          }
+        } else {
+          newSentence = newSentence.replace(new RegExp(`\\b${originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'), '');
+        }
+      } else {
+        newSentence = newSentence.replace(new RegExp(originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), rep);
+      }
+      applyReplacementToEditor(flag.sentence, newSentence, flag.index);
+    },
+    [applyReplacementToEditor]
+  );
+
+  const quickAiRewrite = useCallback(
+    async (flagIndex: number) => {
+      const flag = useDetectionStore.getState().flags.find((f) => f.index === flagIndex);
+      if (!flag) return;
+      const { provider, groqKey, geminiKey, selectedModel } = useAiStore.getState();
+      const activeKey = provider === 'groq' ? groqKey : geminiKey;
+      try {
+        const res = await sendAiHumanizeRequest({
+          text: flag.sentence,
+          model: selectedModel,
+          apiKey: activeKey || undefined,
+          provider,
+          academicStyle: 'standard',
+        });
+        if (res?.humanizedText) {
+          applyReplacementToEditor(flag.sentence, res.humanizedText, flagIndex);
+        }
+      } catch (err) {
+        console.error('Quick AI rewrite failed:', err);
+      }
+    },
+    [applyReplacementToEditor]
+  );
+
+  actionsRef.current = {
+    applyReplacementToEditor,
+    applyWordReplacement,
+    quickAiRewrite,
+  };
+
+  const jumpToLine = (line: number) => {
+    const editor = editorRef.current;
+    if (!editor || !editor.getModel()) return;
+    editor.revealLineInCenter(line);
+    editor.setPosition({ lineNumber: line, column: 1 });
+  };
+
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Configure LaTeX language, Monarch syntax highlighter and theme
     setupMonacoLatex(monaco);
 
-    // Register LaTeX snippets & autocompletions
-    monaco.languages.registerCompletionItemProvider('latex', {
-      provideCompletionItems: (model: any, position: any) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
+    // Everything registered below is tracked and disposed on re-mount / unmount.
+    disposeEditorProviders();
+    const track = <T extends { dispose: () => void }>(d: T) => {
+      disposablesRef.current.push(d);
+      return d;
+    };
 
-        const suggestions = [
-          {
-            label: '\\begin{equation}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\begin{equation}\n\t$0\n\\end{equation}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Numbered mathematical display equation',
-            range,
-          },
-          {
-            label: '\\begin{figure}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\begin{figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\linewidth]{$1}\n\t\\caption{$2}\n\t\\label{fig:$3}\n\\end{figure}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Centered figure with caption and label',
-            range,
-          },
-          {
-            label: '\\begin{table}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\begin{table}[h!]\n\t\\centering\n\t\\caption{$1}\n\t\\label{tab:$2}\n\t\\begin{tabular}{${3:lcc}}\n\t\t\\toprule\n\t\t$4 \\\\\n\t\t\\midrule\n\t\t$0 \\\\\n\t\t\\bottomrule\n\t\\end{tabular}\n\\end{table}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Professional table environment',
-            range,
-          },
-          {
-            label: '\\begin{itemize}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\begin{itemize}\n\t\\item $0\n\\end{itemize}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Unordered bulleted list',
-            range,
-          },
-          {
-            label: '\\begin{enumerate}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\begin{enumerate}\n\t\\item $0\n\\end{enumerate}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Numbered list environment',
-            range,
-          },
-          {
-            label: '\\frac{}{}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\frac{$1}{$2}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Fraction',
-            range,
-          },
-          {
-            label: '\\section{}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\section{$1}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Major section heading',
-            range,
-          },
-          {
-            label: '\\subsection{}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\subsection{$1}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Subsection heading',
-            range,
-          },
-          {
-            label: '\\textbf{}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\textbf{$1}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Bold font formatting',
-            range,
-          },
-          {
-            label: '\\textit{}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\textit{$1}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Italic font formatting',
-            range,
-          },
-          {
-            label: '\\cite{}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\cite{$1}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Bibliographic citation',
-            range,
-          },
-          {
-            label: '\\ref{}',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: '\\ref{$1}',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Cross-reference label',
-            range,
-          },
-        ];
+    track(
+      monaco.languages.registerCompletionItemProvider('latex', {
+        provideCompletionItems: (model: any, position: any) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
+          return {
+            suggestions: SNIPPETS.map(([label, insertText, documentation]) => ({
+              label,
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText,
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation,
+              range,
+            })),
+          };
+        },
+      })
+    );
 
-        return { suggestions };
-      },
-    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => compileNow());
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => compileNow());
 
-    // Keybinding: Cmd+Enter / Ctrl+Enter -> Recompile
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      compileNow();
-    });
-
-    // Keybinding: Cmd+S / Ctrl+S -> Save / Recompile
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      compileNow();
-    });
-
-    // Keybinding: Cmd+K / Ctrl+K -> Gemini Inline Command Palette
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
       const selection = editor.getSelection();
       const model = editor.getModel();
-      let selectedText = '';
-      if (selection && model) {
-        selectedText = model.getValueInRange(selection);
-      }
+      const selectedText = selection && model ? model.getValueInRange(selection) : '';
       openInlineCommand(selectedText, selection);
     });
 
-    // Keybinding: Option+\ / Alt+\ -> Trigger Copilot Inline Autocompletion
     editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Backslash, () => {
       editor.trigger('copilot', 'editor.action.inlineSuggest.trigger', {});
     });
 
-    // Register Monaco Inline Completions Provider (Copilot Ghost Text)
-    if (inlineProviderRef.current) {
-      inlineProviderRef.current.dispose();
-      inlineProviderRef.current = null;
-    }
+    // Copilot-style ghost text
+    track(
+      monaco.languages.registerInlineCompletionsProvider('latex', {
+        provideInlineCompletions: async (model: any, position: any, _ctx: any, token: any) => {
+          if (!useAiStore.getState().ghostTextEnabled) return { items: [] };
 
-    inlineProviderRef.current = monaco.languages.registerInlineCompletionsProvider('latex', {
-      provideInlineCompletions: async (model: any, position: any, _context: any, token: any) => {
-        if (!useAiStore.getState().ghostTextEnabled) {
-          return { items: [] };
-        }
+          const fullText = model.getValue();
+          const offset = model.getOffsetAt(position);
+          const prefix = fullText.slice(Math.max(0, offset - 1500), offset);
+          const suffix = fullText.slice(offset, Math.min(fullText.length, offset + 800));
+          if (!prefix.trim()) return { items: [] };
 
-        const fullText = model.getValue();
-        const offset = model.getOffsetAt(position);
+          await new Promise((r) => setTimeout(r, 250)); // debounce
+          if (token.isCancellationRequested) return { items: [] };
 
-        const prefix = fullText.slice(Math.max(0, offset - 1500), offset);
-        const suffix = fullText.slice(offset, Math.min(fullText.length, offset + 800));
-
-        if (!prefix.trim()) {
-          return { items: [] };
-        }
-
-        // Debounce 250ms
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        if (token.isCancellationRequested) {
-          return { items: [] };
-        }
-
-        try {
+          ghostInflightRef.current += 1;
           useAiStore.getState().setGhostTextLoading(true);
-          const { provider, groqKey, geminiKey, selectedModel } = useAiStore.getState();
-          const apiKey = provider === 'gemini' ? geminiKey : groqKey;
-
-          const completion = await sendAiInlineCompletionRequest({
-            prefix,
-            suffix,
-            provider,
-            apiKey,
-            model: selectedModel,
-          });
-
-          if (token.isCancellationRequested || !completion || !completion.trim()) {
+          try {
+            const { provider, groqKey, geminiKey, selectedModel } = useAiStore.getState();
+            const completion = await sendAiInlineCompletionRequest({
+              prefix,
+              suffix,
+              provider,
+              apiKey: provider === 'gemini' ? geminiKey : groqKey,
+              model: selectedModel,
+            });
+            if (token.isCancellationRequested || !completion?.trim()) return { items: [] };
+            return {
+              items: [
+                {
+                  insertText: completion,
+                  range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                },
+              ],
+            };
+          } catch {
             return { items: [] };
+          } finally {
+            ghostInflightRef.current -= 1;
+            if (ghostInflightRef.current <= 0) {
+              ghostInflightRef.current = 0;
+              useAiStore.getState().setGhostTextLoading(false);
+            }
           }
+        },
+        freeInlineCompletions: () => { },
+      })
+    );
 
-          return {
-            items: [
-              {
-                insertText: completion,
-                range: new monaco.Range(
-                  position.lineNumber,
-                  position.column,
-                  position.lineNumber,
-                  position.column
-                ),
-              },
-            ],
-          };
-        } catch (err) {
-          return { items: [] };
-        } finally {
-          useAiStore.getState().setGhostTextLoading(false);
-        }
-      },
-      freeInlineCompletions: () => {},
-    });
-
-    // Register editor actions for AI insertions
     registerEditorActions(
       (text: string) => {
         const selection = editor.getSelection();
-        if (selection) {
-          editor.executeEdits('ai-copilot', [
-            {
-              range: selection,
-              text,
-              forceMoveMarkers: true,
-            },
-          ]);
-          editor.focus();
-        }
+        if (!selection) return;
+        editor.executeEdits('ai-copilot', [{ range: selection, text, forceMoveMarkers: true }]);
+        editor.focus();
       },
       (replacement: string, range?: any) => {
-        const targetRange = range || editor.getSelection();
-        if (targetRange) {
-          editor.executeEdits('ai-inline-edit', [
-            {
-              range: targetRange,
-              text: replacement,
-              forceMoveMarkers: true,
-            },
-          ]);
-          editor.focus();
-        }
+        const target = range || editor.getSelection();
+        if (!target) return;
+        editor.executeEdits('ai-inline-edit', [{ range: target, text: replacement, forceMoveMarkers: true }]);
+        editor.focus();
       }
     );
 
-    // Register jump to line action
     registerJumpToLine((line: number) => {
-      if (editor) {
-        editor.revealLineInCenter(line);
-        editor.setPosition({ lineNumber: line, column: 1 });
-        editor.focus();
-      }
+      jumpToLine(line);
+      editor.focus();
     });
+
+    // Register AI Detection Fix commands (only once globally for monaco editor)
+    if (!(monaco.editor as any)._elsewhereAiCommandsRegistered) {
+      (monaco.editor as any)._elsewhereAiCommandsRegistered = true;
+
+      monaco.editor.registerCommand('elsewhere.applyFlagRewrite', (_accessor: any, flagIndexArg: any) => {
+        const flagIndex = typeof flagIndexArg === 'number' ? flagIndexArg : parseInt(String(flagIndexArg), 10);
+        const flag = useDetectionStore.getState().flags.find((f) => f.index === flagIndex);
+        if (flag?.suggestedRewrite) {
+          actionsRef.current.applyReplacementToEditor?.(flag.sentence, flag.suggestedRewrite, flag.index);
+        }
+      });
+
+      monaco.editor.registerCommand('elsewhere.applyWordReplacement', (_accessor: any, payloadArg: any) => {
+        try {
+          const payload = typeof payloadArg === 'string' ? JSON.parse(decodeURIComponent(payloadArg)) : payloadArg;
+          actionsRef.current.applyWordReplacement?.(payload.flagIndex, payload.original, payload.replacement);
+        } catch (e) {
+          console.error('Error applying word replacement:', e);
+        }
+      });
+
+      monaco.editor.registerCommand('elsewhere.quickAiRewrite', (_accessor: any, flagIndexArg: any) => {
+        const flagIndex = typeof flagIndexArg === 'number' ? flagIndexArg : parseInt(String(flagIndexArg), 10);
+        actionsRef.current.quickAiRewrite?.(flagIndex);
+      });
+    }
+
+    // Register Lightbulb (CodeAction / QuickFix) Provider
+    track(
+      monaco.languages.registerCodeActionProvider('latex', {
+        provideCodeActions: (_model: any, range: any) => {
+          const flags = useDetectionStore.getState().flags;
+          const currentFile = useProjectStore.getState().activeFilePath;
+          const scanFile = useDetectionStore.getState().scanFilePath;
+          if (currentFile !== scanFile) return { actions: [], dispose: () => {} };
+
+          const flag = flags.find((f) => {
+            if (f.status === 'likely_human' || !f.lineNumber) return false;
+            const startLine = f.lineNumber;
+            const endLine = f.endLineNumber ?? startLine;
+            return range.startLineNumber >= startLine && range.endLineNumber <= endLine;
+          });
+
+          if (!flag) return { actions: [], dispose: () => {} };
+
+          const actions: any[] = [];
+
+          if (flag.suggestedRewrite) {
+            actions.push({
+              title: `⚡ Replace with suggested rewrite`,
+              kind: 'quickfix',
+              isPreferred: true,
+              command: {
+                id: 'elsewhere.applyFlagRewrite',
+                title: 'Apply rewrite',
+                arguments: [flag.index],
+              },
+            });
+          }
+
+          if (flag.wordReplacements?.length) {
+            flag.wordReplacements.forEach((wr) => {
+              wr.replacements.forEach((r) => {
+                const label = r === '(remove)' ? `Remove "${wr.original}"` : `Replace "${wr.original}" with "${r}"`;
+                actions.push({
+                  title: `💡 ${label}`,
+                  kind: 'quickfix',
+                  command: {
+                    id: 'elsewhere.applyWordReplacement',
+                    title: label,
+                    arguments: [encodeURIComponent(JSON.stringify({ flagIndex: flag.index, original: wr.original, replacement: r }))],
+                  },
+                });
+              });
+            });
+          }
+
+          actions.push({
+            title: `✨ Quick AI Humanize sentence`,
+            kind: 'quickfix',
+            command: {
+              id: 'elsewhere.quickAiRewrite',
+              title: 'Quick AI Humanize',
+              arguments: [flag.index],
+            },
+          });
+
+          return { actions, dispose: () => {} };
+        },
+      })
+    );
+
+    // Decorations live on the editor; create the collection per editor instance.
+    detectionDecosRef.current = editor.createDecorationsCollection();
+
+    track(editor.onDidChangeModel(() => setEditorTick((t) => t + 1)));
+    track(
+      editor.onDidDispose(() => {
+        if (editorRef.current === editor) {
+          editorRef.current = null;
+          detectionDecosRef.current = null;
+        }
+      })
+    );
+
+    setEditorTick((t) => t + 1);
   };
 
-  // Sync Diagnostics / Error markers with Monaco
+  /* ------------------------------- Diagnostics ------------------------------ */
+
   useEffect(() => {
-    if (!editorRef.current || !monacoRef.current) return;
+    const editor = editorRef.current;
     const monaco = monacoRef.current;
-    const model = editorRef.current.getModel();
-    if (!model) return;
+    const model = editor?.getModel();
+    if (!editor || !monaco || !model) return;
 
-    const markers: any[] = [];
-
-    // Filter diagnostics that match the current open file
-    const fileErrors = errors.filter((e) => !e.file || e.file === activeFilePath || e.file.endsWith(activeFilePath));
-    const fileWarnings = warnings.filter((w) => !w.file || w.file === activeFilePath || w.file.endsWith(activeFilePath));
-
-    fileErrors.forEach((err) => {
-      const line = err.line && err.line > 0 && err.line <= model.getLineCount() ? err.line : 1;
-      markers.push({
-        severity: monaco.MarkerSeverity.Error,
-        message: err.message + (err.snippet ? `\n> ${err.snippet}` : ''),
-        startLineNumber: line,
+    const clampLine = (l?: number) => (l && l > 0 && l <= model.getLineCount() ? l : 1);
+    const toMarker = (severity: number, message: string, line?: number) => {
+      const ln = clampLine(line);
+      return {
+        severity,
+        message,
+        startLineNumber: ln,
         startColumn: 1,
-        endLineNumber: line,
-        endColumn: model.getLineMaxColumn(line),
-      });
-    });
-
-    fileWarnings.forEach((warn) => {
-      const line = warn.line && warn.line > 0 && warn.line <= model.getLineCount() ? warn.line : 1;
-      markers.push({
-        severity: monaco.MarkerSeverity.Warning,
-        message: warn.message,
-        startLineNumber: line,
-        startColumn: 1,
-        endLineNumber: line,
-        endColumn: model.getLineMaxColumn(line),
-      });
-    });
-
-    monaco.editor.setModelMarkers(model, 'latexer-diagnostics', markers);
-  }, [errors, warnings, activeFilePath]);
-
-  // Tab keyboard shortcuts (⌘W to close tab, ⌘1-⌘9 to switch tab)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isMeta = e.metaKey || e.ctrlKey;
-      if (!isMeta) return;
-
-      // ⌘W / Ctrl+W -> Close active tab
-      if (e.key.toLowerCase() === 'w' && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        closeTab(activeFilePath);
-      }
-
-      // ⌘1 - ⌘9 -> Switch to tab index
-      if (!e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
-        const idx = parseInt(e.key, 10) - 1;
-        if (openTabs[idx]) {
-          e.preventDefault();
-          setActiveFile(openTabs[idx]);
-        }
-      }
+        endLineNumber: ln,
+        endColumn: model.getLineMaxColumn(ln),
+      };
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [closeTab, activeFilePath, openTabs, setActiveFile]);
+    const markers = [
+      ...errors
+        .filter((e) => diagnosticMatches(e.file, activeFilePath))
+        .map((e) => toMarker(monaco.MarkerSeverity.Error, e.message + (e.snippet ? `\n> ${e.snippet}` : ''), e.line)),
+      ...warnings
+        .filter((w) => diagnosticMatches(w.file, activeFilePath))
+        .map((w) => toMarker(monaco.MarkerSeverity.Warning, w.message, w.line)),
+    ];
 
-  // Listen for menu actions (File, Edit, Insert, Format)
+    monaco.editor.setModelMarkers(model, 'latexer-diagnostics', markers);
+  }, [errors, warnings, activeFilePath, editorTick]);
+
+  /* -------------------------- AI detector decorations ------------------------ */
+
   useEffect(() => {
-    const handleLatexMenuAction = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      if (!editorRef.current) return;
-      const editor = editorRef.current;
-      const { type, text, before, after } = customEvent.detail || {};
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const collection = detectionDecosRef.current;
+    const model = editor?.getModel();
+    if (!editor || !monaco || !collection || !model) return;
 
-      if (type === 'undo') {
-        editor.trigger('menu', 'undo', null);
-      } else if (type === 'redo') {
-        editor.trigger('menu', 'redo', null);
-      } else if (type === 'insert' && text) {
+    if (!showHighlightsInEditor || !detectResult || scanFilePath !== activeFilePath || flags.length === 0) {
+      collection.clear();
+      return;
+    }
+
+    const lineCount = model.getLineCount();
+    const clamp = (l: number) => Math.min(Math.max(l, 1), lineCount);
+    const decorations: any[] = [];
+    const lineStatus = new Map<number, FlagStatus>();
+
+    flags.forEach((flag) => {
+      if (!flag.lineNumber) return;
+      const status = flag.status as FlagStatus;
+      const startLine = clamp(flag.lineNumber);
+      const endLine = clamp(Math.max(startLine, (flag as any).endLineNumber ?? startLine));
+      const isActive = flag.index === activeFlagIndex;
+
+      for (let l = startLine; l <= endLine; l++) {
+        const prev = lineStatus.get(l);
+        if (!prev || STATUS_RANK[status] > STATUS_RANK[prev]) lineStatus.set(l, status);
+      }
+
+      // Text highlight: a range-level background paints one continuous rectangle
+      // behind the whole sentence. (inlineClassName styles each token span
+      // separately, which is what produced the broken boxes.)
+      if (status === 'likely_human' && !isActive) return;
+
+      const reasons = (flag.reasons ?? []).map((r: string) => `- ${r}`).join('\n');
+      const title =
+        status === 'likely_ai' ? 'Likely AI' : status === 'mixed' ? 'Mixed or edited' : 'Human';
+
+      let hoverMarkdown = `**${title}** · ${flag.score}% human\n\n${reasons}`;
+
+      if (flag.wordReplacements && flag.wordReplacements.length > 0) {
+        hoverMarkdown += '\n\n**💡 Word replacements:**\n';
+        flag.wordReplacements.forEach((wr) => {
+          const links = wr.replacements
+            .map((rep) => {
+              const label = rep === '(remove)' ? 'Remove' : rep;
+              const payload = encodeURIComponent(
+                JSON.stringify({ flagIndex: flag.index, original: wr.original, replacement: rep })
+              );
+              return `[${label}](command:elsewhere.applyWordReplacement?${payload})`;
+            })
+            .join(' · ');
+          hoverMarkdown += `- "${wr.original}" → ${links}\n`;
+        });
+      }
+
+      if (flag.suggestedRewrite) {
+        hoverMarkdown += `\n\n**💡 Suggested rewrite:**\n> *${flag.suggestedRewrite}*\n\n`;
+        hoverMarkdown += `[⚡ Apply to File](command:elsewhere.applyFlagRewrite?${flag.index})  ·  [✨ AI Rewrite](command:elsewhere.quickAiRewrite?${flag.index})`;
+      } else {
+        hoverMarkdown += `\n\n[✨ AI Rewrite & Apply](command:elsewhere.quickAiRewrite?${flag.index})`;
+      }
+
+      decorations.push({
+        range: new monaco.Range(
+          startLine,
+          flag.startColumn || 1,
+          endLine,
+          flag.endColumn || model.getLineMaxColumn(endLine)
+        ),
+        options: {
+          className: isActive ? 'ai-bg ai-bg-active' : `ai-bg ai-bg-${status === 'likely_ai' ? 'ai' : 'mixed'}`,
+          hoverMessage: {
+            value: hoverMarkdown,
+            isTrusted: true,
+            supportHtml: true,
+          },
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+        },
+      });
+    });
+
+    // Gutter bar: close gaps made only of blank lines, then emit one decoration
+    // per run of equal status so the bar reads as a single unbroken line.
+    const isBlank = (l: number) => model.getLineContent(l).trim() === '';
+    const flagged = [...lineStatus.keys()].sort((a, b) => a - b);
+    for (let i = 0; i < flagged.length - 1; i++) {
+      const a = flagged[i];
+      const b = flagged[i + 1];
+      if (b - a <= 1) continue;
+      let allBlank = true;
+      for (let l = a + 1; l < b; l++) if (!isBlank(l)) { allBlank = false; break; }
+      if (allBlank) for (let l = a + 1; l < b; l++) lineStatus.set(l, lineStatus.get(a)!);
+    }
+
+    let runStart = 0;
+    let runStatus: FlagStatus | null = null;
+    const flush = (endLine: number) => {
+      if (runStatus && runStart) {
+        decorations.push({
+          range: new monaco.Range(runStart, 1, endLine, 1),
+          options: { isWholeLine: true, linesDecorationsClassName: GUTTER_CLASS[runStatus] },
+        });
+      }
+    };
+    for (let l = 1; l <= lineCount; l++) {
+      const s = lineStatus.get(l) ?? null;
+      if (s !== runStatus) {
+        flush(l - 1);
+        runStatus = s;
+        runStart = s ? l : 0;
+      }
+    }
+    flush(lineCount);
+
+    collection.set(decorations);
+  }, [detectResult, scanFilePath, activeFilePath, flags, activeFlagIndex, showHighlightsInEditor, editorTick]);
+
+  /* ------------------------------- Menu actions ----------------------------- */
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const editor = editorRef.current;
+      if (!editor || !editor.getModel()) return;
+      const { type, text, before, after } = (e as CustomEvent).detail || {};
+
+      if (type === 'undo') editor.trigger('menu', 'undo', null);
+      else if (type === 'redo') editor.trigger('menu', 'redo', null);
+      else if (type === 'insert' && text) {
         const selection = editor.getSelection();
-        if (selection) {
-          editor.executeEdits('menu-insert', [
-            {
-              range: selection,
-              text,
-              forceMoveMarkers: true,
-            },
-          ]);
-          editor.focus();
-        }
+        if (!selection) return;
+        editor.executeEdits('menu-insert', [{ range: selection, text, forceMoveMarkers: true }]);
+        editor.focus();
       } else if (type === 'wrap' && before && after) {
         const selection = editor.getSelection();
         const model = editor.getModel();
-        if (selection && model) {
-          const selectedText = model.getValueInRange(selection);
-          editor.executeEdits('menu-wrap', [
-            {
-              range: selection,
-              text: `${before}${selectedText || 'text'}${after}`,
-              forceMoveMarkers: true,
-            },
-          ]);
-          editor.focus();
-        }
+        if (!selection) return;
+        const selected = model.getValueInRange(selection);
+        editor.executeEdits('menu-wrap', [
+          { range: selection, text: `${before}${selected || 'text'}${after}`, forceMoveMarkers: true },
+        ]);
+        editor.focus();
       }
     };
-
-    window.addEventListener('latex-menu-action', handleLatexMenuAction);
-    return () => window.removeEventListener('latex-menu-action', handleLatexMenuAction);
+    window.addEventListener('latex-menu-action', handler);
+    return () => window.removeEventListener('latex-menu-action', handler);
   }, []);
 
-  if (!activeFile) {
-    return (
-      <div className="editor-empty-state">
-        <FileText size={48} className="empty-icon" />
-        <p>No file selected</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { originalText, replacementText, flagIndex } = (e as CustomEvent).detail || {};
+      if (originalText && replacementText !== undefined) {
+        applyReplacementToEditor(originalText, replacementText, flagIndex);
+      }
+    };
+    window.addEventListener('elsewhere-apply-editor-edit', handler);
+    return () => window.removeEventListener('elsewhere-apply-editor-edit', handler);
+  }, [applyReplacementToEditor]);
 
-  const getTabIcon = (path: string) => {
-    if (/\.(png|jpe?g|gif|webp|svg|eps)$/i.test(path) || files[path]?.isBinary) {
-      return <ImageIcon size={12} className="tab-icon text-green" />;
-    }
-    if (path.endsWith('.tex')) {
-      return <FileText size={12} className="tab-icon text-blue" />;
-    }
-    if (path.endsWith('.bib')) {
-      return <BookOpen size={12} className="tab-icon text-amber" />;
-    }
-    if (path.endsWith('.cls') || path.endsWith('.sty')) {
-      return <FileCode size={12} className="tab-icon" />;
-    }
-    return <FileText size={12} className="tab-icon" />;
+  /* --------------------------------- Render --------------------------------- */
+
+  const language = activeFilePath.endsWith('.json') ? 'json' : 'latex';
+  const flaggedCount = flags.filter((f) => f.status !== 'likely_human').length;
+  const showDetectorPill = Boolean(detectResult) && scanFilePath === activeFilePath && showHighlightsInEditor;
+
+  const sharedEditorOptions = {
+    fontSize,
+    fontWeight: '400',
+    fontFamily,
+    fontLigatures: true,
+    lineHeight,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    wordWrap: wordWrap ? ('on' as const) : ('off' as const),
+    automaticLayout: true,
+    renderWhitespace: 'selection' as const,
+    smoothScrolling: true,
+    cursorBlinking: 'smooth' as const,
+    cursorSmoothCaretAnimation: 'on' as const,
+    glyphMargin: false,
+    folding: false,
+    lineNumbersMinChars: 3,
+    // 3px bar + 3px margin (see .ai-gutter) fits in this width.
+    lineDecorationsWidth: 8,
   };
 
-  const language = activeFilePath.endsWith('.bib') ? 'latex' : activeFilePath.endsWith('.json') ? 'json' : 'latex';
-
   return (
-    <div className="relative flex-1 flex flex-col h-full bg-editor overflow-hidden">
-      {/* Multi-File Tab Bar */}
-      <div className="h-[38px] bg-app border-b border-border-subtle flex items-end justify-between px-2 select-none z-[4] shrink-0">
-        <div className="flex items-end gap-1 overflow-x-auto overflow-y-hidden flex-1 min-w-0 h-full" role="tablist">
+    <div
+      className="relative flex h-full flex-1 flex-col overflow-hidden bg-editor"
+      onKeyDownCapture={handleEditorAreaKeyDown}
+    >
+      {/* ------------------------------ Tab bar ------------------------------ */}
+      <div className="z-[4] flex h-9 shrink-0 select-none items-stretch border-b border-border-subtle bg-app">
+        <div role="tablist" className="flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
           {openTabs.map((tabPath) => {
             const isActive = tabPath === activeFilePath;
             const isPending = Boolean(pendingEdits[tabPath]);
@@ -548,52 +802,46 @@ export const MonacoLatexEditor: React.FC = () => {
                 key={tabPath}
                 role="tab"
                 aria-selected={isActive}
-                className={`group relative flex items-center gap-1.5 px-3 h-[31px] rounded-t-md text-xs font-medium cursor-pointer transition-all border border-b-0 select-none shrink-0 ${
-                  isActive
-                    ? 'bg-editor text-text-primary border-border-subtle font-semibold shadow-xs z-[2] -mb-px'
-                    : 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-card/70 border-transparent'
-                } ${isPending ? 'border-b-2 border-b-amber-500!' : ''}`}
+                tabIndex={isActive ? 0 : -1}
+                title={isPending ? `${tabPath} (pending AI changes)` : tabPath}
+                className={`group relative flex h-full shrink-0 cursor-pointer items-center gap-2 border-r border-border-subtle pl-3 pr-1.5 text-xs outline-none transition-colors focus-visible:ring-1 focus-visible:ring-brand ${isActive
+                    ? 'bg-editor text-text-primary'
+                    : 'bg-transparent text-text-muted hover:bg-card/60 hover:text-text-primary'
+                  }`}
                 onClick={() => setActiveFile(tabPath)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveFile(tabPath);
+                  }
+                }}
                 onAuxClick={(e) => {
                   if (e.button === 1) {
                     e.preventDefault();
                     closeTab(tabPath);
                   }
                 }}
-                onContextMenu={(e) => handleTabContextMenu(e, tabPath)}
-                title={isPending ? `${tabPath} (Pending AI changes)` : tabPath}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setTabMenu({ x: e.clientX, y: e.clientY, tabPath });
+                }}
               >
-                {/* Active tab top indicator accent */}
-                {isActive && (
-                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-brand rounded-t-md" />
-                )}
-
-                <div className="flex items-center gap-1.5 min-w-0">
-                  {getTabIcon(tabPath)}
-                  <span className={`truncate max-w-[140px] ${isActive ? 'text-text-primary font-semibold' : 'text-text-secondary'}`}>
-                    {tabPath}
-                  </span>
-                </div>
-
+                {isActive && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-brand" />}
+                {tabIconFor(tabPath, files[tabPath]?.isBinary)}
+                <span className="max-w-[140px] truncate">{tabPath}</span>
                 {isPending && (
-                  <span className="text-[9px] font-bold text-amber-600 bg-amber-500/15 px-1 py-0.5 rounded ml-0.5" title="Pending changes to review">
-                    M
-                  </span>
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Pending changes" />
                 )}
-
-                {/* Visible Close Button */}
                 <button
                   type="button"
-                  className={`w-[18px] h-[18px] rounded flex items-center justify-center transition-all cursor-pointer border-0 bg-transparent ml-1 ${
-                    isActive
-                      ? 'text-text-secondary hover:text-text-primary hover:bg-black/10 opacity-70 hover:opacity-100'
-                      : 'text-text-muted hover:text-text-primary hover:bg-black/10 opacity-0 group-hover:opacity-100'
-                  }`}
+                  aria-label={`Close ${tabPath}`}
+                  title="Close (⌘W)"
+                  className={`${iconBtn} h-5 w-5 ${isActive ? 'opacity-70 hover:opacity-100' : 'opacity-0 focus:opacity-100 group-hover:opacity-100'
+                    }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(tabPath);
                   }}
-                  title="Close tab (⌘W)"
                 >
                   <X size={12} />
                 </button>
@@ -601,276 +849,219 @@ export const MonacoLatexEditor: React.FC = () => {
             );
           })}
         </div>
+
+        {showDetectorPill && detectResult && (
+          <div className="flex shrink-0 items-center gap-2 border-l border-border-subtle px-3 text-xs">
+            <ShieldCheck
+              size={13}
+              className={detectResult.humanScore >= 75 ? 'text-emerald-500' : detectResult.humanScore >= 50 ? 'text-amber-500' : 'text-rose-500'}
+            />
+            <span className="font-medium text-text-primary">{detectResult.humanScore}% human</span>
+            <span className="text-text-muted">{flaggedCount} flagged</span>
+            <div className="flex items-center">
+              <button
+                type="button"
+                className={iconBtn}
+                aria-label="Previous flagged sentence"
+                title="Previous flagged sentence"
+                disabled={flaggedCount === 0}
+                onClick={() => prevFlag(jumpToLine)}
+              >
+                <ChevronUp size={14} />
+              </button>
+              <button
+                type="button"
+                className={iconBtn}
+                aria-label="Next flagged sentence"
+                title="Next flagged sentence"
+                disabled={flaggedCount === 0}
+                onClick={() => nextFlag(jumpToLine)}
+              >
+                <ChevronDown size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Tab Context Menu */}
-      {tabContextMenu && (
+      {/* --------------------------- Tab context menu -------------------------- */}
+      {tabMenu && (
         <div
-          className="fixed z-50 bg-card border border-border-light shadow-xl rounded-md py-1 min-w-[150px] text-xs backdrop-blur-md"
-          style={{ top: tabContextMenu.y, left: tabContextMenu.x }}
+          role="menu"
+          className="fixed z-50 min-w-[160px] rounded-md border border-border-light bg-card py-1 text-xs shadow-lg"
+          style={{ top: tabMenu.y, left: tabMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            className="w-full text-left px-3 py-1.5 hover:bg-card-hover flex items-center justify-between text-text-primary cursor-pointer border-0 bg-transparent"
-            onClick={() => {
-              closeTab(tabContextMenu.tabPath);
-              setTabContextMenu(null);
-            }}
-          >
-            <span>Close</span>
-            <span className="text-[10px] text-text-muted font-mono">⌘W</span>
-          </button>
-          <button
-            type="button"
-            className="w-full text-left px-3 py-1.5 hover:bg-card-hover text-text-primary cursor-pointer border-0 bg-transparent"
-            onClick={() => {
-              closeOtherTabs(tabContextMenu.tabPath);
-              setTabContextMenu(null);
-            }}
-          >
-            Close Others
-          </button>
-          {openTabs.indexOf(tabContextMenu.tabPath) < openTabs.length - 1 && (
-            <button
-              type="button"
-              className="w-full text-left px-3 py-1.5 hover:bg-card-hover text-text-primary cursor-pointer border-0 bg-transparent"
-              onClick={() => {
-                const idx = openTabs.indexOf(tabContextMenu.tabPath);
-                openTabs.slice(idx + 1).forEach((t) => closeTab(t));
-                setTabContextMenu(null);
-              }}
-            >
-              Close to the Right
-            </button>
-          )}
+          {[
+            { label: 'Close', hint: '⌘W', run: () => closeTab(tabMenu.tabPath), show: true },
+            { label: 'Close others', run: () => closeOtherTabs(tabMenu.tabPath), show: openTabs.length > 1 },
+            {
+              label: 'Close to the right',
+              run: () => openTabs.slice(openTabs.indexOf(tabMenu.tabPath) + 1).forEach((t) => closeTab(t)),
+              show: openTabs.indexOf(tabMenu.tabPath) < openTabs.length - 1,
+            },
+          ]
+            .filter((i) => i.show)
+            .map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className="flex w-full cursor-pointer items-center justify-between border-0 bg-transparent px-3 py-1.5 text-left text-text-primary hover:bg-card-hover"
+                onClick={() => {
+                  item.run();
+                  setTabMenu(null);
+                }}
+              >
+                <span>{item.label}</span>
+                {'hint' in item && item.hint && <span className="text-text-muted">{item.hint}</span>}
+              </button>
+            ))}
         </div>
       )}
 
-      {/* Editor Canvas or Binary Image Preview or Diff Editor or Empty state */}
+      {/* ------------------------------ Content ------------------------------ */}
       {!activeFile ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-editor text-center select-none">
-          <div className="w-12 h-12 rounded-xl bg-app border border-border-subtle flex items-center justify-center text-text-muted mb-3 shadow-xs">
-            <FileText size={22} />
+        <div className="flex flex-1 select-none flex-col items-center justify-center gap-3 bg-editor p-8 text-center">
+          <FileText size={28} className="text-text-muted" />
+          <div>
+            <h3 className="m-0 text-sm font-medium text-text-primary">No file open</h3>
+            <p className="m-0 mt-1 max-w-xs text-xs text-text-muted">
+              Open a file from the project explorer, or reopen the root document.
+            </p>
           </div>
-          <h3 className="text-sm font-semibold text-text-primary mb-1">No File Open</h3>
-          <p className="text-xs text-text-muted mb-4 max-w-xs">
-            Open a file from the Project Explorer or reopen the root document.
-          </p>
           <button
             type="button"
-            className="bg-brand hover:bg-brand-hover text-white text-xs px-3.5 py-1.5 rounded font-medium cursor-pointer shadow-xs transition-all flex items-center gap-1.5"
-            onClick={() => setActiveFile('main.tex')}
+            className="cursor-pointer rounded-md border-0 bg-brand px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-hover"
+            onClick={() => setActiveFile(ROOT_FILE)}
           >
-            <FileText size={13} />
-            <span>Open main.tex</span>
+            Open {ROOT_FILE}
           </button>
         </div>
-      ) : activeFile?.isBinary ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-editor">
-          <div className="flex items-center gap-2 text-xs font-medium text-text-secondary mb-4">
-            <ImageIcon size={14} className="text-emerald-600" />
-            <span>{activeFile.path} (Image Preview)</span>
-          </div>
-          <div className="max-w-full max-h-[80%] flex items-center justify-center bg-white p-4 rounded border border-border-subtle shadow-md">
+      ) : activeFile.isBinary ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-editor p-6">
+          <span className="text-xs text-text-muted">{activeFile.path}</span>
+          <div className="flex max-h-[80%] max-w-full items-center justify-center rounded-md border border-border-subtle bg-white p-3 shadow-md">
             <img
               src={`data:image/png;base64,${activeFile.content}`}
               alt={activeFile.path}
-              className="max-w-full max-h-full object-contain"
+              className="max-h-full max-w-full object-contain"
             />
           </div>
         </div>
       ) : pendingEdit ? (
-        <div className="relative flex-1 w-full h-full overflow-hidden">
+        <div className="relative h-full w-full flex-1 overflow-hidden">
           <DiffEditor
+            key={activeFilePath} // remount per file so listeners never write to a stale path
             height="100%"
             language={language}
             theme={editorTheme}
             beforeMount={setupMonacoLatex}
             original={pendingEdit.originalContent}
             modified={pendingEdit.newContent}
-            onMount={(diffEditor) => {
+            onMount={(diffEditor, monaco) => {
               diffEditorRef.current = diffEditor;
+              const modified = diffEditor.getModifiedEditor();
 
-              try {
-                diffEditor.updateOptions({
-                  renderSideBySide: false,
-                  compactMode: true,
-                  hideOriginalLineNumbers: true,
-                } as any);
-
-                // Disable line numbers and margin on original (hidden) sub-editor completely
-                const orig = diffEditor.getOriginalEditor();
-                orig.updateOptions({
-                  lineNumbers: 'off',
-                  glyphMargin: false,
-                  folding: false,
-                  lineDecorationsWidth: 0,
-                  lineNumbersMinChars: 0,
-                });
-
-                // Configure modified editor with compact line numbers
-                const mod = diffEditor.getModifiedEditor();
-                mod.updateOptions({
-                  lineNumbers: 'on',
-                  lineNumbersMinChars: 3,
-                  glyphMargin: false,
-                  folding: false,
-                  lineDecorationsWidth: 4,
-                });
-              } catch (e) {
-                console.error('Error configuring diff editor options:', e);
-              }
-
-              const modifiedEditor = diffEditor.getModifiedEditor();
-              modifiedEditor.onDidChangeModelContent(() => {
-                const val = modifiedEditor.getValue();
-                updateFileContent(activeFilePath, val);
+              modified.onDidChangeModelContent(() => {
+                diffDraftRef.current = { path: pathRef.current, value: modified.getValue() };
               });
+
+              // ⌘⏎ accepts; ⌘⇧⌫ rejects (plain ⌘⌫ stays "delete to line start" while typing).
+              modified.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => acceptRef.current());
+              modified.addCommand(
+                monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Backspace,
+                () => rejectRef.current()
+              );
             }}
             options={{
-              renderSideBySide: false, // Unified inline diff view like Cursor/Windsurf
-              hideOriginalLineNumbers: true,
-              compactMode: true,
-              readOnly: false,
+              ...sharedEditorOptions,
+              renderSideBySide: false, // unified inline diff
               originalEditable: false,
-              fontSize,
-              fontWeight: '400',
-              fontFamily,
-              fontLigatures: true,
-              lineHeight,
+              readOnly: false,
               lineNumbers: 'on',
-              lineNumbersMinChars: 3,
-              glyphMargin: false,
-              folding: false,
-              lineDecorationsWidth: 4,
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              wordWrap: wordWrap ? 'on' : 'off',
-              automaticLayout: true,
-              renderWhitespace: 'selection',
-              smoothScrolling: true,
-              cursorBlinking: 'smooth',
-              cursorSmoothCaretAnimation: 'on',
               diffWordWrap: 'on',
-              mouseWheelZoom: true,
-            } as any}
+            }}
           />
 
-          {/* Floating Action Toolbar Overlay */}
-          <div className="absolute top-3 right-6 z-20 flex items-center gap-1.5 bg-card/95 backdrop-blur-md border border-border-light px-2.5 py-1.5 rounded-lg shadow-lg shadow-black/15">
+          {/* Review bar */}
+          <div className="absolute right-6 top-3 z-20 flex items-center gap-1 rounded-lg border border-border-light bg-card/95 p-1 shadow-lg shadow-black/10 backdrop-blur">
             <button
               type="button"
-              className="bg-emerald-600 hover:bg-emerald-500 text-white border-0 px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-brand px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-brand-hover"
               onClick={handleAcceptCurrent}
-              title="Accept Changes (⌘Enter)"
+              title="Accept changes (⌘⏎)"
             >
               <Check size={12} />
-              <span>Accept Changes</span>
-              <span className="opacity-70 text-[10px] ml-0.5 font-mono">⌘⏎</span>
+              Accept
             </button>
-
             <button
               type="button"
-              className="bg-rose-600 hover:bg-rose-500 text-white border-0 px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-card-hover hover:text-text-primary"
               onClick={handleRejectCurrent}
-              title="Reject Changes (⌘Backspace)"
+              title="Reject changes (⌘⇧⌫)"
             >
               <X size={12} />
-              <span>Reject</span>
-              <span className="opacity-70 text-[10px] ml-0.5 font-mono">⌘⌫</span>
+              Reject
             </button>
 
-            <div className="w-px h-4 bg-border-light mx-1" />
+            <span className="mx-1 h-4 w-px bg-border-light" />
 
             <button
               type="button"
-              className="bg-transparent hover:bg-card-hover border border-border-subtle text-text-secondary hover:text-text-primary px-1.5 py-0.5 rounded text-[11px] font-mono cursor-pointer transition-all"
-              onClick={() => {
-                if (diffEditorRef.current?.goToDiff) {
-                  diffEditorRef.current.goToDiff('previous');
-                }
-              }}
+              className={iconBtn}
+              aria-label="Previous change"
               title="Previous change"
+              onClick={() => diffEditorRef.current?.goToDiff?.('previous')}
             >
-              <span>↑K</span>
+              <ChevronUp size={14} />
             </button>
-
             <button
               type="button"
-              className="bg-transparent hover:bg-card-hover border border-border-subtle text-text-secondary hover:text-text-primary px-1.5 py-0.5 rounded text-[11px] font-mono cursor-pointer transition-all"
-              onClick={() => {
-                if (diffEditorRef.current?.goToDiff) {
-                  diffEditorRef.current.goToDiff('next');
-                }
-              }}
+              className={iconBtn}
+              aria-label="Next change"
               title="Next change"
+              onClick={() => diffEditorRef.current?.goToDiff?.('next')}
             >
-              <span>↓J</span>
+              <ChevronDown size={14} />
             </button>
 
             {editedFilePaths.length > 1 && (
               <>
-                <div className="w-px h-4 bg-border-light mx-1" />
-                <div className="flex items-center gap-1 text-[11px] text-text-secondary">
-                  <button
-                    type="button"
-                    className="bg-transparent hover:bg-card-hover text-text-secondary hover:text-text-primary p-0.5 rounded cursor-pointer border-0 transition-all"
-                    onClick={handlePrevEditedFile}
-                    title="Previous edited file"
-                  >
-                    <ChevronLeft size={13} />
-                  </button>
-                  <span className="font-mono px-1">
-                    Edited files {currentEditIndex + 1}/{editedFilePaths.length}
-                  </span>
-                  <button
-                    type="button"
-                    className="bg-transparent hover:bg-card-hover text-text-secondary hover:text-text-primary p-0.5 rounded cursor-pointer border-0 transition-all"
-                    onClick={handleNextEditedFile}
-                    title="Next edited file"
-                  >
-                    <ChevronRight size={13} />
-                  </button>
-                </div>
+                <span className="mx-1 h-4 w-px bg-border-light" />
+                <button type="button" className={iconBtn} aria-label="Previous edited file" onClick={() => stepEditedFile(-1)}>
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="px-1 text-[11px] tabular-nums text-text-secondary">
+                  {currentEditIndex + 1} / {editedFilePaths.length} files
+                </span>
+                <button type="button" className={iconBtn} aria-label="Next edited file" onClick={() => stepEditedFile(1)}>
+                  <ChevronRight size={14} />
+                </button>
               </>
             )}
           </div>
         </div>
       ) : (
-        <div className="relative flex-1 w-full h-full overflow-hidden">
+        <div className="relative h-full w-full flex-1 overflow-hidden">
           <InlineCommandPalette />
           <Editor
             height="100%"
+            path={activeFilePath} // one model per file: separate undo history, no cross-file undo
+            keepCurrentModel
             language={language}
             theme={editorTheme}
             beforeMount={setupMonacoLatex}
-            value={activeFile?.content || ''}
+            value={activeFile.content || ''}
             onChange={handleContentChange}
             onMount={handleEditorDidMount}
             options={{
-              fontSize,
-              fontWeight: '400',
-              fontFamily,
-              fontLigatures: true,
-              lineHeight,
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              wordWrap: wordWrap ? 'on' : 'off',
-              automaticLayout: true,
+              ...sharedEditorOptions,
+              lineNumbers,
               tabSize: 2,
               insertSpaces: true,
               suggestOnTriggerCharacters: true,
               bracketPairColorization: { enabled: bracketPairColorization },
-              lineNumbers,
-              lineNumbersMinChars: 3,
-              glyphMargin: false,
-              lineDecorationsWidth: 4,
-              renderWhitespace: 'selection',
-              smoothScrolling: true,
-              cursorBlinking: 'smooth',
-              cursorSmoothCaretAnimation: 'on',
-              mouseWheelZoom: true,
               inlineSuggest: {
                 enabled: true,
                 mode: 'subwordSmart',
