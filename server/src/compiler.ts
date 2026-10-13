@@ -10,8 +10,15 @@ import { generateStarterPdf } from './fallbackPdf.js';
 
 const execFileAsync = promisify(execFile);
 
-// Common paths on macOS for TeX distributions
-const ADDITIONAL_PATHS = ['/Library/TeX/texbin', '/usr/local/texlive/current/bin/universal-darwin', '/opt/homebrew/bin'];
+// Common paths on macOS & Linux (containers) for TeX distributions and Tectonic
+const ADDITIONAL_PATHS = [
+  '/usr/local/bin',
+  '/usr/bin',
+  '/Library/TeX/texbin',
+  '/usr/local/texlive/current/bin/universal-darwin',
+  '/usr/local/texlive/current/bin/x86_64-linux',
+  '/opt/homebrew/bin',
+];
 const ENHANCED_PATH = `${ADDITIONAL_PATHS.join(':')}:${process.env.PATH || ''}`;
 
 // Cache of compiled PDFs in memory for fast serving

@@ -1,3 +1,6 @@
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
 import { compileWorkspace, detectEngines, pdfCache } from './compiler.js';
@@ -320,6 +323,33 @@ app.get('/api/papers/search', async (req, res) => {
     res.status(500).json({ error: err.message || 'Paper search failed' });
   }
 });
+
+// Serve compiled client frontend if present (Production / Docker / Cloud Run)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const candidateDistDirs = [
+  process.env.CLIENT_DIST_PATH,
+  path.resolve(__dirname, '../../client/dist'),
+  path.resolve(__dirname, '../client/dist'),
+  path.resolve(process.cwd(), 'client/dist'),
+  path.resolve(process.cwd(), '../client/dist'),
+].filter(Boolean) as string[];
+
+const clientDistDir = candidateDistDirs.find((dir) => fs.existsSync(dir));
+
+if (clientDistDir) {
+  console.log(`📦 Serving static client UI from: ${clientDistDir}`);
+  app.use(express.static(clientDistDir));
+
+  // SPA fallback for all non-API web traffic
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistDir, 'index.html'));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`🚀 Latexer Compilation Server running on http://localhost:${PORT}`);

@@ -1,0 +1,38 @@
+steps:
+  # Build container image via Google Cloud Build
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/elsewhere:latest', '.']
+
+  # Push image to Google Container Registry / Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/elsewhere:latest']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'elsewhere'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/elsewhere:latest'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300s'
+
+substitutions:
+  _REGION: 'us-central1'
+
+images:
+  - 'gcr.io/$PROJECT_ID/elsewhere:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
