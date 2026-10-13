@@ -35,9 +35,9 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 export async function detectEngines(): Promise<EngineStatus> {
-  const checkCmd = async (cmd: string): Promise<boolean> => {
+  const checkCmd = async (cmd: string, args: string[] = ['--version']): Promise<boolean> => {
     try {
-      await execFileAsync('which', [cmd], { env: { ...process.env, PATH: ENHANCED_PATH } });
+      await execFileAsync(cmd, args, { env: { ...process.env, PATH: ENHANCED_PATH }, timeout: 5000 });
       return true;
     } catch {
       return false;
@@ -45,17 +45,17 @@ export async function detectEngines(): Promise<EngineStatus> {
   };
 
   const [tectonic, latexmk, pdflatex, xelatex] = await Promise.all([
-    checkCmd('tectonic'),
-    checkCmd('latexmk'),
-    checkCmd('pdflatex'),
-    checkCmd('xelatex'),
+    checkCmd('tectonic', ['--version']),
+    checkCmd('latexmk', ['-v']),
+    checkCmd('pdflatex', ['-version']),
+    checkCmd('xelatex', ['-version']),
   ]);
 
   const hasAnyEngine = tectonic || latexmk || pdflatex || xelatex;
   let recommendedEngine: string | null = null;
-  if (tectonic) recommendedEngine = 'tectonic';
-  else if (latexmk) recommendedEngine = 'latexmk';
+  if (latexmk) recommendedEngine = 'latexmk';
   else if (pdflatex) recommendedEngine = 'pdflatex';
+  else if (tectonic) recommendedEngine = 'tectonic';
   else if (xelatex) recommendedEngine = 'xelatex';
 
   const instructions = hasAnyEngine
@@ -189,6 +189,30 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
       success = true;
     } catch {
       success = false;
+    }
+
+    // If initial engine failed to produce PDF, attempt graceful fallback to pdflatex
+    if (!success && selectedEngine !== 'pdflatex' && engineStatus.availableEngines.pdflatex) {
+      try {
+        const fallbackRes = await execFileAsync('pdflatex', ['-interaction=nonstopmode', '-file-line-error', mainFile], {
+          cwd: buildDir,
+          timeout: 120000,
+          env: { ...process.env, PATH: ENHANCED_PATH },
+        });
+        rawLog += `\n\n--- Fallback Engine: pdflatex ---\n` + (fallbackRes.stdout || '') + (fallbackRes.stderr ? '\n' + fallbackRes.stderr : '');
+        try {
+          const fallbackLog = await fs.readFile(logFilePath, 'utf-8');
+          rawLog += '\n\n--- TeX Engine Log ---\n' + fallbackLog;
+        } catch {
+          // ignore log read error
+        }
+        pdfBuffer = await fs.readFile(pdfFilePath);
+        success = true;
+        selectedEngine = 'pdflatex (fallback)';
+      } catch (fallbackErr: any) {
+        // Fallback did not succeed, keep original log
+        rawLog += `\n[Fallback pdflatex attempt]: ${fallbackErr?.message || 'failed'}`;
+      }
     }
 
     if (pdfBuffer && pdfBuffer.length > 0) {

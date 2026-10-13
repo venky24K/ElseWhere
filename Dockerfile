@@ -31,7 +31,7 @@ RUN npm run build
 # -------------------------------------------------------------
 FROM node:20-bookworm-slim AS runner
 
-# Install ca-certificates, curl, fontconfig, TeX Live (pdflatex, latexmk)
+# Install ca-certificates, curl, fontconfig, TeX Live (pdflatex, latexmk, extra packages)
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -39,12 +39,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fontconfig \
     texlive-latex-base \
     texlive-latex-recommended \
+    texlive-latex-extra \
     texlive-fonts-recommended \
     latexmk \
     && rm -rf /var/lib/apt/lists/*
-
-# Attempt installation of Tectonic single binary
-RUN (curl --proto '=https' --tlsv1.2 -fsSL https://drop-sh.fullyjustified.net | sh && mv tectonic /usr/local/bin/) || true
 
 WORKDIR /app
 
