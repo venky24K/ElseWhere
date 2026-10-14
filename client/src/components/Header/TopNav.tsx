@@ -116,6 +116,11 @@ export const TopNav: React.FC = () => {
     setActiveMenu(null);
   };
 
+  const handleTriggerUpload = () => {
+    fileInputRef.current?.click();
+    setActiveMenu(null);
+  };
+
   const menuItems = [
     {
       id: 'File',
@@ -131,10 +136,7 @@ export const TopNav: React.FC = () => {
           label: 'Upload File...',
           icon: <UploadCloud size={14} />,
           shortcut: '',
-          action: () => {
-            fileInputRef.current?.click();
-            setActiveMenu(null);
-          },
+          action: handleTriggerUpload,
         },
         { divider: true },
         {

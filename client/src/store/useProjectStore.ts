@@ -75,6 +75,34 @@ interface ProjectState {
 
 const STORAGE_KEY = 'latexer_project_v1';
 
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function persistProjectState(
+  data: {
+    projectName: string;
+    files: Record<string, VirtualFile>;
+    activeFilePath: string;
+    openTabs: string[];
+    folders: string[];
+  },
+  immediate = false
+) {
+  const doSave = () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (err) {
+      console.warn('[VFS] LocalStorage save failed or quota exceeded:', err);
+    }
+  };
+
+  if (immediate) {
+    if (saveTimer) clearTimeout(saveTimer);
+    doSave();
+  } else {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(doSave, 600);
+  }
+}
+
 function getDefaultFiles(): Record<string, VirtualFile> {
   const defaultTemplate = TEMPLATES[0]; // Academic paper
   const files: Record<string, VirtualFile> = {};
@@ -115,7 +143,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   hostSetupModalOpen: false,
   jumpToLineFn: null,
 
-  setProjectName: (name) => set({ projectName: name }),
+  setProjectName: (name) => {
+    set((state) => {
+      persistProjectState({
+        projectName: name,
+        files: state.files,
+        activeFilePath: state.activeFilePath,
+        openTabs: state.openTabs,
+        folders: state.folders,
+      }, true);
+      return { projectName: name };
+    });
+  },
 
   setActiveFile: (path) => {
     if (get().files[path]) {
@@ -162,7 +201,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!cleanFolder) return;
     set((state) => {
       if (state.folders.includes(cleanFolder)) return state;
-      return { folders: [...state.folders, cleanFolder] };
+      const nextFolders = [...state.folders, cleanFolder];
+      persistProjectState({
+        projectName: state.projectName,
+        files: state.files,
+        activeFilePath: state.activeFilePath,
+        openTabs: state.openTabs,
+        folders: nextFolders,
+      }, true);
+      return { folders: nextFolders };
     });
   },
 
@@ -181,6 +228,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (nextActive.startsWith(prefix)) {
         nextActive = nextTabs[0] || 'main.tex';
       }
+      persistProjectState({
+        projectName: state.projectName,
+        files: updatedFiles,
+        activeFilePath: nextActive,
+        openTabs: nextTabs.length > 0 ? nextTabs : ['main.tex'],
+        folders: updatedFolders,
+      }, true);
       return {
         files: updatedFiles,
         folders: updatedFolders,
@@ -199,17 +253,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         [path]: { ...current, content },
       };
 
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          projectName: state.projectName,
-          files: updatedFiles,
-          activeFilePath: state.activeFilePath,
-          openTabs: state.openTabs,
-          folders: state.folders,
-        }));
-      } catch {
-        // local storage quota or private browsing
-      }
+      // Debounce saving to localStorage to eliminate typing latency (PERF-01)
+      persistProjectState({
+        projectName: state.projectName,
+        files: updatedFiles,
+        activeFilePath: state.activeFilePath,
+        openTabs: state.openTabs,
+        folders: state.folders,
+      }, false);
 
       return { files: updatedFiles };
     });
@@ -230,6 +281,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       }
       const nextTabs = state.openTabs.includes(path) ? state.openTabs : [...state.openTabs, path];
+
+      persistProjectState({
+        projectName: state.projectName,
+        files: updatedFiles,
+        activeFilePath: path,
+        openTabs: nextTabs,
+        folders: updatedFolders,
+      }, true);
+
       return {
         files: updatedFiles,
         activeFilePath: path,
@@ -252,9 +312,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (state.activeFilePath === path) {
         nextActive = nextTabs.length > 0 ? nextTabs[nextTabs.length - 1] : 'main.tex';
       }
+      const finalTabs = nextTabs.length > 0 ? nextTabs : ['main.tex'];
+
+      persistProjectState({
+        projectName: state.projectName,
+        files: updated,
+        activeFilePath: nextActive,
+        openTabs: finalTabs,
+        folders: state.folders,
+      }, true);
+
       return {
         files: updated,
-        openTabs: nextTabs.length > 0 ? nextTabs : ['main.tex'],
+        openTabs: finalTabs,
         activeFilePath: nextActive,
       };
     });
@@ -273,10 +343,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       delete updated[oldPath];
       updated[newPath] = { ...current, path: newPath };
       const nextTabs = state.openTabs.map((t) => (t === oldPath ? newPath : t));
+      const nextActive = state.activeFilePath === oldPath ? newPath : state.activeFilePath;
+
+      persistProjectState({
+        projectName: state.projectName,
+        files: updated,
+        activeFilePath: nextActive,
+        openTabs: nextTabs,
+        folders: state.folders,
+      }, true);
+
       return {
         files: updated,
         openTabs: nextTabs,
-        activeFilePath: state.activeFilePath === oldPath ? newPath : state.activeFilePath,
+        activeFilePath: nextActive,
       };
     });
   },
@@ -309,10 +389,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     template.files.forEach((f) => {
       newFiles[f.path] = { ...f };
     });
+    persistProjectState({
+      projectName: template.name,
+      files: newFiles,
+      activeFilePath: 'main.tex',
+      openTabs: ['main.tex'],
+      folders: [],
+    }, true);
+
     set({
       projectName: template.name,
       files: newFiles,
       activeFilePath: 'main.tex',
+      openTabs: ['main.tex'],
+      folders: [],
       templateModalOpen: false,
       pdfUrl: null,
       errors: [],

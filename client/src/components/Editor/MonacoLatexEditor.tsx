@@ -133,7 +133,9 @@ export const MonacoLatexEditor: React.FC = () => {
   // until the user accepts, so Reject really leaves the document untouched.
   const diffDraftRef = useRef<{ path: string; value: string } | null>(null);
   const pathRef = useRef(activeFilePath);
-  pathRef.current = activeFilePath;
+  useEffect(() => {
+    pathRef.current = activeFilePath;
+  }, [activeFilePath]);
 
   /* ----------------------------- Accept / reject ---------------------------- */
 
@@ -158,8 +160,10 @@ export const MonacoLatexEditor: React.FC = () => {
   // Monaco commands are registered once, so they call through a ref to stay current.
   const acceptRef = useRef(handleAcceptCurrent);
   const rejectRef = useRef(handleRejectCurrent);
-  acceptRef.current = handleAcceptCurrent;
-  rejectRef.current = handleRejectCurrent;
+  useEffect(() => {
+    acceptRef.current = handleAcceptCurrent;
+    rejectRef.current = handleRejectCurrent;
+  });
 
   const stepEditedFile = (delta: 1 | -1) => {
     if (editedFilePaths.length <= 1) return;
@@ -325,11 +329,13 @@ export const MonacoLatexEditor: React.FC = () => {
     [applyReplacementToEditor]
   );
 
-  actionsRef.current = {
-    applyReplacementToEditor,
-    applyWordReplacement,
-    quickAiRewrite,
-  };
+  useEffect(() => {
+    actionsRef.current = {
+      applyReplacementToEditor,
+      applyWordReplacement,
+      quickAiRewrite,
+    };
+  });
 
   const jumpToLine = (line: number) => {
     const editor = editorRef.current;

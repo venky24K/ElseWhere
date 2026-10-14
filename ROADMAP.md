@@ -13,11 +13,17 @@
 | **Phase 2** | **Design Token System** | Tailwind CSS v4 + Semantic `@theme` + Dark Theme | `[COMPLETED]` | Delivered |
 | **Phase 3** | **Dual AI Copilot & VS Code Activity Bar** | Groq LPU + Gemini + VS Code Activity Bar + Multi-View Sidebar | `[COMPLETED]` | Delivered |
 | **Phase 4** | **Agentic AI & Research Intelligence** | Autonomous Agent + Copilot Chat + Universal Academic Search (250M+ Papers) + Base Paper Reading + Humanizer | `[COMPLETED]` | Delivered |
-| **Phase 5** | **Professional IDE Workspace & Navigation** | Application Menu Bar + Editor Tab Pills + Settings Hub + PDF Preview Controls | `[COMPLETED]` | Delivered |
-| **Phase 6** | **Overleaf Industrial Differentiators** | AI Doctor, SyncTeX, Smart DOI/BibTeX, TikZ Studio, PDF Diff, Pandoc/Word Export | `[PLANNED]` | Q3 2026 |
+| **Phase 5** | **Professional IDE Workspace & Navigation** | Application Menu Bar + Editor Tab Pills + Settings Hub + PDF Preview Controls + VFS Folders | `[COMPLETED]` | Delivered |
+| **Phase 6** | **Overleaf Industrial Differentiators** | AI Doctor `[DONE]`, SyncTeX `[DONE]`, Smart DOI/BibTeX `[DONE]`, TikZ Studio, PDF Diff, Pandoc/Word Export | `[IN PROGRESS]` | Q3 2026 |
+| **Hardening Track** | **Security, Bug Fixes & Reliability** | RCE Sandboxing (`-no-shell-escape`), Windows PATH Delimiter, VFS Persistence, Math `$` Replace | `[COMPLETED]` | Delivered |
 | **Phase 7** | **Sandboxing, Decoupled Queue & WASM** | Docker/Firecracker, BullMQ + Redis, Client-side WASM TeX (Offline) | `[PLANNED]` | Q3 2026 |
 | **Phase 8** | **Multiplayer CRDTs & Git Sync** | Yjs Real-Time Engine, Track Changes, GitHub Two-Way Sync | `[PLANNED]` | Q4 2026 |
 | **Phase 9** | **Enterprise Identity & Production Scale** | PostgreSQL/Drizzle, ORCID/SAML SSO, RBAC, Kubernetes Helm | `[PLANNED]` | Q4 2026 |
+| **Phase 10** | **Public Web Portal & Commercial Hub** | Landing Page (`/`), Docs (`/docs`), Features (`/features`), Pricing + AI Keys (`/pricing`), Public Templates | `[PLANNED]` | Q3 2026 |
+| **Phase 11** | **Multi-Project Hub & Continuous DB Sync** | Project Dashboard (`/projects`), Folder Isolation, Background Cloud Auto-Save, PostgreSQL/Drizzle Sync | `[PLANNED]` | Q3 2026 |
+| **Phase 12** | **Teams, Labs & Collaborative Workspaces** | Organization Workspaces, Team Seats, Member RBAC, Shared Project Libraries | `[PLANNED]` | Q4 2026 |
+| **Phase 13** | **Autonomous "One-Shot" Paper Generation Agent** | End-to-End Manuscript Synthesis (Hypothesis ➔ Full Draft + Math + Citations + Verified Build in 1-Click) | `[PLANNED]` | Q4 2026 |
+| **Phase 14** | **Native Desktop Application Distribution** | Tauri + Rust Desktop Bundle (<15MB), Direct Local Filesystem I/O, True Offline Native TeX Execution | `[PLANNED]` | Q4 2026 |
 
 ---
 
@@ -70,6 +76,60 @@ flowchart TB
     PDFStream -->|Stream /api/pdf/:id| PDFViewer
     LogParser -->|Structured Diagnostics| Monaco
 ```
+
+### 🌐 Routing & Surface Separation: Public Web vs. Authenticated Studio
+
+To maintain high SEO scores, instant landing page loads (<100ms FCP), and clear boundary isolation, the application architecture strictly partitions the **Public Web Portal** from the **Authenticated Research Studio Workspace**:
+
+```mermaid
+flowchart TD
+    subgraph PublicDomain ["Public Web Surface (Lightweight, SEO-Optimized, Code-Split)"]
+        Landing["Landing Page (/)<br/>Hero, Live Showcase, Value Props, Template Launcher"]
+        Features["Feature Tour (/features)<br/>Interactive Speed & AI Benchmark Demos"]
+        Docs["Documentation (/docs)<br/>Guides, LaTeX Cheatsheet, Compiler & API Manual"]
+        Pricing["Pricing & Plans (/pricing)<br/>Free, Pro Researcher, Team Tiers + Bundled AI Keys"]
+        PublicTemplates["Template Gallery (/templates)<br/>Categorized Academic, Beamer & Resume Starters"]
+    end
+
+    subgraph AuthBoundary ["Authentication & Route Guard (Clerk / Supabase / OAuth)"]
+        AuthGate{"User Authenticated?"}
+    end
+
+    subgraph StudioDomain ["Authenticated Research Studio (Rich Client SPA + Heavy Tooling)"]
+        ProjectDashboard["Project Hub (/projects)<br/>Project Creation, Folder Partitioning, Metadata"]
+        
+        subgraph ProjectWorkspace ["Active Project Studio (/project/:id)"]
+            MonacoCore["Monaco LaTeX Editor Core"]
+            PDFPreview["PDF.js Live Preview + SyncTeX"]
+            AgentPanel["Autonomous Agent & Copilot Chat"]
+            VFSIsolated["Isolated Project Folder & Assets VFS"]
+        end
+        
+        CloudSync["Continuous Cloud Auto-Save Engine<br/>Debounced Sync to DB + Conflict Resolution"]
+        OneShotAgent["One-Shot Paper Generation Pipeline<br/>Autonomous End-to-End Drafting Engine"]
+    end
+
+    Landing -->|Browse & Click Template| AuthGate
+    Landing -->|Sign In / Get Started| AuthGate
+    Pricing -->|Subscribe with AI Key Tier| AuthGate
+    PublicTemplates -->|Open in Studio| AuthGate
+    AuthGate -->|Yes| ProjectDashboard
+    ProjectDashboard -->|Open Project| ProjectWorkspace
+    ProjectWorkspace <--> CloudSync
+    ProjectWorkspace <--> OneShotAgent
+```
+
+#### Routing & Architectural Responsibility Matrix
+
+| Route | Domain Area | Purpose & Contents | Heavy Bundle Loading | Auth Required |
+| :--- | :--- | :--- | :---: | :---: |
+| `/` | **Landing Page** | High-conversion hero, interactive preview demo, social proof, template launcher | ❌ None (Pure HTML/CSS/Tailwind) | No |
+| `/features` | **Features Showcase** | Local-first compilation speed tests, AI Copilot vs. Overleaf comparisons, SyncTeX demos | ❌ None (Lazy static components) | No |
+| `/docs` | **Documentation Hub** | Comprehensive documentation, LaTeX tutorials, keyboard shortcuts, API reference | ❌ None (Static markdown/MDX) | No |
+| `/pricing` | **Pricing & Plans** | Subscription tiers (Free, Pro, Team, Lab), included managed AI key credits & BYOK | ❌ None (Stripe/LemonSqueezy elements) | No |
+| `/templates` | **Template Gallery** | Browse academic papers, resumes, presentations, with 1-click "Open in Studio" | ❌ None (Card grid with preview thumbnails) | No |
+| `/projects` | **Project Hub** | User's projects list, creation modal, project folder isolation, team switcher | ❌ Minimal | ✅ Yes |
+| `/project/:id` | **Research Studio** | Full IDE: Monaco editor, PDF.js preview, SyncTeX, Autonomous Agent, VFS folder | 📦 Loaded on-demand (`React.lazy`) | ✅ Yes |
 
 ---
 
@@ -300,14 +360,14 @@ flowchart TB
   - Client-side blob fetching using `saveAs(blob, `${cleanName}.pdf`)` guaranteeing that the browser uses the project name (e.g., `academic_research_manuscript.pdf`) without server `main.pdf` header overrides.
   - Backend `/api/pdf/:buildId` endpoint supporting `?filename=` query parameter and dynamic `Content-Disposition: attachment`.
 
-### 5.4 Hierarchical Folders & Directory Creation in VFS `[IN PROGRESS]`
-- [ ] Support nested directory hierarchies in the Virtual File System (e.g., `chapters/intro.tex`, `figures/diagram.png`, `styles/macros.sty`).
-- [ ] **Folder Operations**:
-  - "New Folder" icon and context menu option in the File Explorer panel.
-  - Collapsible tree view with persistent expansion states.
-  - Drag-and-drop file organization (move files into folders).
-- [ ] **Compiler Sandbox Path Preservation**:
-  - Compiler worker preserves relative folder structures so `\input{chapters/intro}` and `\includegraphics{figures/diagram}` compile seamlessly without path errors.
+### 5.4 Hierarchical Folders & Directory Creation in VFS `[COMPLETED]`
+- [x] Support nested directory hierarchies in the Virtual File System (e.g., `chapters/intro.tex`, `figures/diagram.png`, `styles/macros.sty`).
+- [x] **Folder Operations** (`FileTree.tsx`, `useProjectStore.ts`):
+  - "New Folder" icon and creation dialog in the File Explorer panel.
+  - Collapsible tree view (`Folder`, `FolderOpen`, `ChevronDown`, `ChevronRight`) with persistent expansion states.
+  - Nested file creation and folder-level deletion (`deleteFolder`).
+- [x] **Compiler Sandbox Path Preservation** (`compiler.ts`):
+  - Compiler worker preserves relative folder structures (`fs.mkdir(path.dirname(filePath), { recursive: true })`) so `\input{chapters/intro}` and `\includegraphics{figures/diagram}` compile seamlessly without path errors.
 
 ### 5.5 Comprehensive Multi-Category Settings Hub (`SettingsModal.tsx`) `[COMPLETED]`
 - [x] Unified, tabbed Settings dialog with deep customization categories:
@@ -323,38 +383,184 @@ flowchart TB
 
 ---
 
-## 🚀 Phase 6: Overleaf Industrial Differentiators `[PLANNED]`
+## 🚀 Phase 6: Overleaf Industrial Differentiators `[IN PROGRESS]`
 
-### 6.1 AI Error Doctor (1-Click Auto-Patching) `[TODO]`
-- [ ] Add a **"✨ Fix with AI"** button on every diagnostic card in `LogsDrawer.tsx`.
-- [ ] Send compiler diagnostic, error snippet, faulty line number, and surrounding 30 lines of code to the AI.
-- [ ] Compute minimal replacement hunk and display an interactive diff modal (Before vs. After).
-- [ ] 1-Click **"Apply Fix & Recompile"** updating Monaco buffer and triggering an immediate test build.
+### 6.1 AI Error Doctor (1-Click Auto-Patching) `[COMPLETED]`
+- [x] Dedicated **"Fix with AI"** and **"Auto-Fix All"** integration in `LogsDrawer.tsx` and `PdfViewer.tsx` error banners.
+- [x] Structured diagnostic payload generator (`aiDoctor.ts`: `formatDoctorFixAllPrompt`, `formatDoctorFixSinglePrompt`) feeding line numbers, compiler error messages, snippet contexts, and TeX log tails directly to the Autonomous Agent.
+- [x] Autonomous repair cycle: Agent inspects offending files, applies surgical replacements, and immediately test-compiles via `compile_and_diagnose` to verify zero errors before reporting back.
 
-### 6.2 SyncTeX Bi-Directional Forward & Inverse Navigation `[TODO]`
-- [ ] **Build Pipeline Flag**: Enable `--synctex=1` across compilation runs and parse generated `.synctex.gz`.
-- [ ] **Forward Search (Editor ➔ PDF)**: `⌘ + Click` on any line in Monaco editor scrolls PDF.js and highlights the target paragraph.
-- [ ] **Inverse Search (PDF ➔ Editor)**: `⌘ + Click` on the rendered PDF preview switches Monaco to the source file and scrolls to line.
+### 6.2 SyncTeX Bi-Directional Forward & Inverse Navigation `[COMPLETED]`
+- [x] **Compiler Synchronization Flag**: Enabled `--synctex` on Tectonic and `-synctex=1` across `latexmk`, `pdflatex`, and `xelatex`.
+- [x] **SyncTeX Parser & In-Memory Indexer** (`synctex.ts`):
+  - Automatically uncompresses `.synctex.gz` (and uncompressed `.synctex`), indexes coordinates into efficient `fileMap` and `pageMap`.
+  - Excludes internal TeX distribution runtime definitions (`.cls`, `.sty`, `.def`, `.ldf`).
+- [x] **Bidirectional Backend Endpoints** (`index.ts`):
+  - Forward Sync: `/api/synctex/forward?buildId=&file=&line=` returning target `(page, xPt, yPt)`.
+  - Reverse Sync: `/api/synctex/reverse?buildId=&page=&xPt=&yPt=` returning `(file, line)`.
+- [x] **Sub-Pixel Word-Level Bounding Rect Highlight** (`PdfViewer.tsx`):
+  - `computeWordRect` and `getWordBoundingRect` performing DOM Range and proportional bounding calculation inside the PDF.js text layer.
+  - Smooth animated scroll-to-view and temporary glowing highlight pulse.
+- [x] **Inverse Jump to Source** (`MonacoLatexEditor.tsx`, `useProjectStore.ts`):
+  - `⌘ + Click` / Click on PDF preview triggers `reverseSyncToCode`, automatically switching active file tab and highlighting the source line with `synctex-highlight-editor-line`.
 
-### 6.3 Smart Bibliography & DOI / arXiv Auto-Fetcher `[TODO]`
-- [ ] Quick fetch modal accepting DOI, arXiv ID/URL, or ISBN.
-- [ ] Queries CrossRef REST API and arXiv API; transforms response into clean BibTeX entries appended to `references.bib`.
-- [ ] Rich citation autocomplete in Monaco: dropdown displays paper title, first author, publication year, and abstract preview.
+### 6.3 Smart Bibliography & DOI / arXiv Auto-Fetcher `[COMPLETED]`
+- [x] **Multi-Source Scholarly Search Engine** (`paperSearch.ts`):
+  - Direct concurrent querying across OpenAlex, arXiv, Crossref, and Semantic Scholar with reciprocal rank fusion (RRF).
+- [x] **Instant BibTeX Generation & 1-Click Library Ingestion** (`ReferencePapersView.tsx`):
+  - Automatically converts paper DOIs, titles, authors, and venues into standard `@article{...}` / `@inproceedings{...}` blocks.
+  - 1-Click append directly to `references.bib` with duplicate key detection.
+- [x] **Base Paper Full-Text Reading & Multi-Modal Literature Review**:
+  - Upload research paper PDFs; extracts text, abstracts, and tables client-side via `pdfjs-dist`.
+  - Synthesizes related work sections, benchmark tables, and comparative analyses directly into the manuscript.
 
-### 6.4 Isolated Live TikZ & PGFPlots Studio `[TODO]`
-- [ ] Dedicated playground isolating `\begin{tikzpicture}` blocks into lightweight standalone templates.
-- [ ] Micro-compilation (<100ms) directly to standalone vector SVG or PDF preview.
-- [ ] Export diagram directly as standalone `.svg`, `.pdf`, or high-resolution `.png`.
+### 6.4 Multimodal "Screenshot-to-LaTeX", Plot-to-TikZ & Isolated Studio `[PLANNED]`
+- [ ] **Multimodal Formula & Whiteboard OCR (Vision-to-LaTeX)**:
+  - Paste or drag screenshot of handwritten equations, textbook formulas, or whiteboard derivations directly into Monaco editor.
+  - Powered by Gemini Multimodal: parses multi-line symbols, matrices, summations, and integral bounds into clean, idiomatic `\begin{align}` or `\begin{equation}` environments in <1s.
+- [ ] **Diagram & Plot-to-TikZ Vectorizer**:
+  - Paste raster plots, architecture flowcharts, neural network diagrams, or circuit schematics.
+  - AI vision engine converts the image into clean, editable vector `\begin{tikzpicture}` code using modern TikZ libraries (`shapes`, `arrows.meta`, `positioning`).
+- [ ] **Isolated Live TikZ & PGFPlots Studio**:
+  - Dedicated playground isolating `\begin{tikzpicture}` blocks into lightweight standalone templates.
+  - Micro-compilation (<100ms) directly to standalone vector SVG or PDF preview without recompiling the entire book/manuscript.
+  - Export diagram directly as standalone `.svg`, `.pdf`, or publication-grade high-resolution 600 DPI `.png`.
 
-### 6.5 Visual Rendered PDF Diffing `[TODO]`
+### 6.5 Visual Rendered PDF Diffing `[PLANNED]`
 - [ ] Compare rendered PDF pages between compilation builds, saved checkpoints, or git commits.
 - [ ] Visual overlay: highlights added paragraphs/equations in emerald green and deleted items in crimson red directly on the PDF pages.
 - [ ] Toggle between split side-by-side mode and opacity slider overlay mode.
 
-### 6.6 Multi-Format Publishing Engine (Pandoc / Quarto) `[TODO]`
+### 6.6 Multi-Format Publishing Engine (Pandoc / Quarto) `[PLANNED]`
 - [ ] Export project to Microsoft Word (`.docx`) for non-LaTeX co-authors and journal reviewers.
 - [ ] Export to clean GitHub Flavored Markdown (`.md`) and interactive HTML5 research article with KaTeX math rendering.
 - [ ] Import from Markdown / Docx into native LaTeX workspace.
+
+---
+
+## 🔍 Codebase Audit Register: Discovered Bugs, Security Vulnerabilities & Engineering Fixes
+
+> Tracking all concrete findings from in-depth codebase static analysis and runtime verification across the client and server compilation engine, categorized by severity, component, root cause, and remediation plan.
+
+### 📊 Vulnerability & Defect Severity Matrix
+
+| Issue ID | Category | Component | File Location | Severity | Status |
+| :--- | :--- | :--- | :--- | :---: | :---: |
+| **SEC-01** | Security (RCE) | Compilation Sandbox | [`server/src/compiler.ts:L168`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L168-L173) | `CRITICAL` | `[RESOLVED]` |
+| **SEC-02** | Security (Traversal) | Virtual File Writer | [`server/src/compiler.ts:L140`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L140-L153) | `HIGH` | `[RESOLVED]` |
+| **BUG-01** | Runtime Bug | TeX Engine Discovery | [`server/src/compiler.ts:L16`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L16-L34) | `HIGH` | `[RESOLVED]` |
+| **BUG-02** | Data Loss Bug | Global Search & Replace | [`client/src/components/Sidebar/SearchPanel.tsx:L88`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/components/Sidebar/SearchPanel.tsx#L88-L95) | `HIGH` | `[RESOLVED]` |
+| **BUG-03** | Data Loss Bug | Virtual File System | [`client/src/store/useProjectStore.ts:L79`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/store/useProjectStore.ts#L79-L105) | `HIGH` | `[RESOLVED]` |
+| **BUG-04** | Runtime Crash | AI Copilot (Gemini) | [`server/src/aiService.ts:L394`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/aiService.ts#L394-L410) | `MEDIUM` | `[RESOLVED]` |
+| **BUG-05** | Parsing Warning | Fallback PDF Engine | [`server/src/fallbackPdf.ts:L22`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/fallbackPdf.ts#L22-L42) | `MEDIUM` | `[RESOLVED]` |
+| **PERF-01** | Performance & Quota | Monaco Keystroke Store | [`client/src/store/useProjectStore.ts:L79`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/store/useProjectStore.ts#L79-L105) | `HIGH` | `[RESOLVED]` |
+| **PERF-02** | Network Dependency | Tectonic Engine | [`server/src/compiler.ts:L168`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L168) | `MEDIUM` | `[RESOLVED]` |
+| **DEV-01** | Compiler Warning | React 19 Concurrent | [`PdfViewer.tsx`, `MonacoLatexEditor.tsx`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/components/Preview/PdfViewer.tsx#L287) | `LOW` | `[RESOLVED]` |
+| **PERF-03** | Engine Warning | Production Dockerfile | [`Dockerfile:L8`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/Dockerfile#L8) | `LOW` | `[RESOLVED]` |
+| **DEV-02** | Windows Native | Build Toolchain | [`client/package.json`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/package.json) | `MEDIUM` | `[RESOLVED]` |
+
+---
+
+### A. 🚨 Critical Security Vulnerabilities
+
+#### 1. [SEC-01] LaTeX Shell Escape / Remote Code Execution (`\write18`)
+- **Location**: [`server/src/compiler.ts:L145-L150`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L145-L150)
+- **Vulnerability**: Standard TeX distributions (`pdflatex`, `xelatex`, `latexmk`) permit arbitrary operating system command execution via `\immediate\write18{...}` or `\input|...` unless shell escape is explicitly forbidden via CLI flags. Without isolation, any user could submit a document executing host processes.
+- **Root Cause**:
+  ```ts
+  args = ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
+  ```
+  Missing `-no-shell-escape` parameter allows arbitrary command execution.
+- **Remediation Plan**:
+  - Inject `-no-shell-escape` across all `pdflatex`, `xelatex`, and `latexmk` command invocations.
+  - Implement pre-compilation regex scan to flag and block `\write18` and pipe-input attempts before spawning the process.
+
+#### 2. [SEC-02] Path Traversal in Ephemeral Build Directory Materialization
+- **Location**: [`server/src/compiler.ts:L127-L130`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L127-L130)
+- **Vulnerability**: Sanitizing virtual file paths with `replace(/^(\.\.[\/\\])+/, '')` only removes leading relative dots. Windows drive letters (e.g. `C:\...`) or nested sequences could resolve outside `/tmp/latexer-builds/<uuid>`.
+- **Root Cause**:
+  ```ts
+  const sanitizedPath = path.normalize(file.path).replace(/^(\.\.[\/\\])+/, '');
+  const filePath = path.join(buildDir, sanitizedPath);
+  ```
+- **Remediation Plan**:
+  - Enforce strict canonical path resolution:
+    ```ts
+    const targetPath = path.resolve(buildDir, sanitizedPath);
+    if (!targetPath.startsWith(path.resolve(buildDir) + path.sep)) {
+      throw new Error(`Access denied: path traversal attempt detected (${file.path})`);
+    }
+    ```
+
+---
+
+### B. 🐛 Definite Bugs & Runtime Errors
+
+#### 3. [BUG-01] Cross-Platform PATH Delimiter Corruption on Windows
+- **Location**: [`server/src/compiler.ts:L16-L25`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L16-L25)
+- **Root Cause**: `ADDITIONAL_PATHS.join(':')` hardcodes Unix colon delimiters. On Windows, the delimiter is `;` and drive letters contain colons (`C:\...`). Prepending `:` corrupts the system environment string, causing `execFileAsync` to fail locating MiKTeX or TeXLive executables.
+- **Remediation Plan**:
+  - Dynamically use `path.delimiter` (`process.platform === 'win32' ? ';' : ':'`).
+  - Append standard Windows distribution directories (`C:\Program Files\MiKTeX\miktex\bin\x64`, `C:\texlive\...\bin\windows`).
+
+#### 4. [BUG-02] Mathematical Dollar-Sign (`$`) String Corruption in Global Search & Replace
+- **Location**: [`client/src/components/Sidebar/SearchPanel.tsx:L88-L95`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/components/Sidebar/SearchPanel.tsx#L88-L95)
+- **Root Cause**: `current.content.replace(reg, replacement)` evaluates special regex replacement tokens (`$1`, `$&`, `$'`). When a user replaces text with LaTeX equations (e.g., `$x$`, `$$...$$`, `$\lambda$`), JavaScript substitutes capture groups or removes the equation.
+- **Remediation Plan**:
+  - Use a functional replacer to guarantee literal text substitution: `current.content.replace(reg, () => replacement)`.
+
+#### 5. [BUG-03] Incomplete VFS Persistence (Data Loss on Browser Refresh)
+- **Location**: [`client/src/store/useProjectStore.ts:L218-L282`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/store/useProjectStore.ts#L218-L282)
+- **Root Cause**: Only `updateFileContent` saved workspace state to `localStorage`. `createFile`, `deleteFile`, `renameFile`, `createFolder`, and `deleteFolder` lacked serialization calls, causing newly created or deleted files to revert on refresh.
+- **Remediation Plan**:
+  - Centralize state synchronization in a unified `persistProjectState(state)` helper called after all VFS mutations.
+
+#### 6. [BUG-04] Google Gemini Multi-Turn Conversation Schema Crash
+- **Location**: [`server/src/aiService.ts:L394-L396`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/aiService.ts#L394-L396)
+- **Root Cause**: The `@google/generative-ai` SDK rejects messages with `role: 'assistant'` or flat `{ content: string }`, requiring `{ role: 'model', parts: [{ text }] }`. Messages formatted for Groq/OpenAI throw uncaught exceptions in Gemini chats.
+- **Remediation Plan**:
+  - Normalize conversation history format in `chatWithGemini` to translate roles (`assistant` ➔ `model`) and wrap content into `parts: [{ text }]`.
+
+#### 7. [BUG-05] Corrupted XRef Byte Offsets & Startxref in Fallback PDF
+- **Location**: [`server/src/fallbackPdf.ts:L62-L76`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/fallbackPdf.ts#L62-L76)
+- **Root Cause**: The cross-reference table contains hardcoded byte offsets and estimated startxref offsets (`400 + streamLength`). PDF.js triggers `Warning: Indexing all PDF objects` and standalone PDF viewers report damaged files.
+- **Remediation Plan**:
+  - Dynamically calculate the exact byte offsets of `1 0 obj`, `2 0 obj`, `3 0 obj`, `4 0 obj`, and the `xref` keyword.
+
+---
+
+### C. ⚡ Performance & Reliability Improvements
+
+#### 8. [PERF-01] Synchronous Keystroke Serialization & 5MB `QuotaExceededError`
+- **Location**: [`client/src/store/useProjectStore.ts:L193-L215`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/store/useProjectStore.ts#L193-L215)
+- **Bottleneck**: `updateFileContent` ran `JSON.stringify` on the entire file dictionary and called `localStorage.setItem` synchronously on every keystroke. This causes typing stutter on large files and triggers browser quota failures when base64 image assets are present.
+- **Remediation Plan**:
+  - Debounce `localStorage` serialization by 500ms.
+  - Store binary assets (images, PDFs) in browser IndexedDB via `idb-keyval` rather than `localStorage`.
+
+#### 9. [PERF-02] Hardcoded Remote Tectonic Bundle URL Dependency
+- **Location**: [`server/src/compiler.ts:L144`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/server/src/compiler.ts#L144)
+- **Bottleneck**: `--bundle https://data1b.fullyjustified.net/tlextras-2022.0r0.tar` forces Tectonic to attempt remote tarball downloads on every compilation, causing failures when offline or on unstable networks.
+- **Remediation Plan**:
+  - Remove the forced `--bundle` parameter, permitting Tectonic to use its official local bundle cache.
+
+#### 10. [DEV-01] React 19 Concurrent Ref Mutation Warnings
+- **Location**: [`PdfViewer.tsx:L287`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/components/Preview/PdfViewer.tsx#L287), [`MonacoLatexEditor.tsx:L136`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/src/components/Editor/MonacoLatexEditor.tsx#L136)
+- **Issue**: Mutating `ref.current` directly in the component render body violates React 19 concurrent rendering purity rules and triggers Oxlint warnings.
+- **Remediation Plan**:
+  - Shift ref updates to `useEffect` or derive values directly from reactive state.
+
+#### 11. [PERF-03] Production Docker Node Engine Alignment (Node 22)
+- **Location**: [`Dockerfile:L8`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/Dockerfile#L8)
+- **Issue**: `node:20-bookworm-slim` triggers engine warnings (`required: node >=20.19.0 || >=22.12.0`) with Vite 8 and Rolldown.
+- **Remediation Plan**:
+  - Upgrade base images to `node:22-bookworm-slim` for full LTS engine compliance.
+
+#### 12. [DEV-02] Windows Native Rolldown & Oxlint Binary Resolution `[RESOLVED]`
+- **Location**: [`client/package.json`](file:///c:/Users/SRMAP/Documents/Github/ElseWhere/client/package.json)
+- **Root Cause**: npm issue #4828 fails to install optional native bindings on Windows x64.
+- **Resolution**:
+  - Explicitly installed `@rolldown/binding-win32-x64-msvc` and `@oxlint/binding-win32-x64-msvc` in `devDependencies`.
 
 ---
 
@@ -410,3 +616,246 @@ flowchart TB
   - `docker-compose.prod.yml` (Nginx, API server, TeX workers, PostgreSQL, Redis, MinIO).
   - Production Kubernetes Helm charts with horizontal pod autoscaling (HPA) for TeX workers.
 - [ ] Full-stack observability: Prometheus metrics, Grafana dashboards, OpenTelemetry distributed tracing, and Sentry error monitoring.
+
+---
+
+## 🌐 Phase 10: Public Web Ecosystem & Commercial Portal `[PLANNED]`
+
+> Building the public-facing educational, marketing, and commercial web surface, strictly decoupled from the heavy studio workspace to ensure instant sub-100ms first contentful paint (FCP) and top-tier SEO discoverability.
+
+### 10.1 High-Conversion Scientific Landing Page (`/`)
+- [ ] **Hero Section & Live Interactive Preview**:
+  - Live side-by-side interactive hero demonstration showcasing instantaneous local compilation and Monaco LaTeX editing without requiring sign-up.
+  - Floating feature pills: *Local-First Speed (Zero Cloud Queues)*, *Autonomous AI Agent*, *Real-Time SyncTeX*, *250M+ Paper Search*.
+- [ ] **Interactive Compilation Latency Benchmark**:
+  - Visual stopwatch comparison: Traditional Cloud Compilers (12–25s cold queues) vs. ElseWhere Local-First Tectonic Engine (<350ms instant builds).
+- [ ] **Integrated Public Template Showcase**:
+  - Direct template carousel on the landing page (Nature/IEEE Paper, ACM Conference, PhD Thesis, Modern CV, Beamer Slides).
+  - 1-Click **"Start Writing with this Template"** button routing directly into the authenticated studio workspace with the selected files pre-loaded.
+- [ ] **Social Proof & Academic Lab Endorsements**:
+  - University and research institute logos, quotes from computational researchers, and GitHub star badge.
+- [ ] **Call to Action (CTA)**:
+  - Frictionless "Start Researching Free" and "Explore Public Demos" conversion triggers.
+
+### 10.2 Comprehensive Documentation & LaTeX Knowledge Base (`/docs`)
+- [ ] **Interactive User Manual & Tutorials**:
+  - Fast-track getting started guide: Local installation, host engine discovery (MacTeX, TeXLive, Tectonic), and virtual workspace mechanics.
+  - Comprehensive LaTeX mathematical typesetting guide with 1-click copyable formulas (`amsmath`, `amssymb`, `mathtools`).
+  - Table crafting mastery: `booktabs` styling guidelines, column alignments, and multi-row layout recipes.
+- [ ] **AI Copilot & Autonomous Agent Handbook**:
+  - Best-practice prompting for academic writing, literature reviews, and equation proof generation.
+  - Explaining the autonomous `Plan ➔ Act ➔ Observe ➔ Verify` agentic loop and compiler self-healing.
+  - Academic humanizer scoring rubric and perplexity tuning recommendations.
+- [ ] **Full-Text Searchable Knowledge Base**:
+  - Integrated Algolia / Pagefind client-side search across all docs articles.
+  - Keyboard shortcut cheat sheet modal (`⌘Enter` recompile, `⌘K` inline AI, `⌘J` diagnostics, `⌘B` sidebar).
+
+### 10.3 Interactive Feature Tour (`/features`)
+- [ ] Dedicated feature showcase deep-diving into ElseWhere’s architectural advantages:
+  - **Local-First vs. Cloud-Only Architecture**: Detailed breakdown of privacy, offline resilience, and compute speed.
+  - **Bi-Directional SyncTeX**: Sub-pixel word-level jumping interactive demonstration.
+  - **Dual AI Engine**: Groq LPU sub-300ms inference alongside Google Gemini native reasoning.
+  - **Literature Web Search**: OpenAlex & arXiv integration indexing 250M+ scholarly records with 1-click BibTeX ingestion.
+
+### 10.4 Pricing, Subscription Plans & Managed AI Key Tiers (`/pricing`)
+- [ ] **Transparent Academic & Commercial Subscription Matrix**:
+  - **Free Tier (Hobbyist & Student)**:
+    - Unlimited local compilation on your machine.
+    - All starter templates included.
+    - Bring Your Own API Key (BYOK) for Groq and Google Gemini with zero markup.
+    - Full offline Virtual File System support.
+  - **Pro Researcher Tier ($15 / month or $144 / year)**:
+    - **Included Managed AI Key & Token Allowance**: Pre-configured high-speed Groq LPU and Gemini 3.8 Flash access (5M tokens/month included) — **no personal API key required**.
+    - Continuous Cloud Database Sync & Auto-Save across unlimited devices.
+    - Priority Cloud Sandboxed Compilation Queue when working on devices without local TeX.
+    - Full AI Error Doctor 1-click self-correction and literature review synthesizer.
+  - **Team / Lab Tier ($30 / user / month)**:
+    - Everything in Pro with pooled organization AI token credits.
+    - Multi-project team workspaces with centralized billing.
+    - Real-time multiplayer CRDT co-authoring with live cursors and review suggestions.
+    - Shared research reference library and custom institution LaTeX class templates.
+  - **Institutional / Enterprise Tier (Custom Pricing)**:
+    - On-premise Docker / Kubernetes cluster deployments.
+    - Dedicated host compiler nodes with 100% data sovereignty.
+    - Institutional Single Sign-On (SAML, Shibboleth, EduGAIN, ORCID).
+    - Custom SLA, compliance guarantees, and dedicated onboarding.
+- [ ] **Billing & Subscription Management Integration**:
+  - Stripe / LemonSqueezy checkout with automated student academic discount verification (.edu email auto-discount).
+  - Usage dashboard displaying monthly AI token consumption, active cloud storage quota, and active compile credits.
+
+### 10.5 Public Template Gallery & Instant Studio Forking (`/templates`)
+- [ ] Dedicated public marketplace to discover, preview, and fork community & official LaTeX templates:
+  - Filter by category: **Journal Papers**, **Conference Articles**, **Dissertations / Theses**, **Presentations (Beamer)**, **CVs & Resumes**, **Formal Letters**.
+  - Interactive PDF preview rendered directly in the browser via PDF.js before creating a project.
+  - 1-Click **"Open Template in Studio"** button: seamlessly clones virtual files into a new project and navigates to `/project/:id`.
+
+---
+
+## 📁 Phase 11: Multi-Project Hub, File Isolation & Continuous Cloud DB Auto-Save `[PLANNED]`
+
+> Elevating ElseWhere from a single-project prototype into a complete multi-project research hub with strict file isolation and resilient cloud database auto-save.
+
+### 11.1 Project Management Hub (`/projects` / `/dashboard`)
+- [ ] **Centralized Projects Dashboard**:
+  - Visual grid and list view of all author projects with live compiled PDF thumbnail previews.
+  - Search bar with instant filtering by project name, tags (e.g. `#machine-learning`, `#ieee`, `#dissertation`), and last-modified date.
+  - Sorting options: *Recently Opened*, *Compilation Date*, *Alphabetical*, *Starred/Favorites*.
+- [ ] **Project Creation & Import Modal**:
+  - Create blank project with custom entrypoint file selection.
+  - Create from official starter templates or team-shared templates.
+  - Import existing project from local `.zip` archive or multi-file folder picker.
+  - Clone directly from public or private GitHub / GitLab repository URL.
+- [ ] **Project Lifecycle Actions**:
+  - Rename project, update description, duplicate project snapshot, archive project, or permanently delete.
+  - 1-Click **"Download Complete Project (ZIP)"** and **"Download Latest PDF"**.
+
+### 11.2 Strict File System Isolation per Project
+- [ ] **Physical & Virtual Directory Partitioning**:
+  - Every project receives an isolated, unique namespace directory: `/projects/<projectId>/...`.
+  - Virtual files, uploaded figure assets (PNG, JPG, PDF), references (`references.bib`), compilation artifacts (`main.pdf`, `main.log`, `.synctex.gz`), and AI chat histories are strictly partitioned.
+  - Prevents filename collisions and cross-project contamination when compiling simultaneously.
+
+### 11.3 Continuous Cloud Database Sync & Background Auto-Save
+- [ ] **Debounced Real-Time Synchronization Engine**:
+  - Background auto-save worker debounces typing activity (e.g., 800ms idle timer) and computes incremental patch diffs.
+  - Seamlessly persists project metadata and virtual file buffers to cloud database (PostgreSQL with Drizzle ORM / Supabase).
+- [ ] **Optimistic Local Caching with Offline Resilience**:
+  - Local-first architecture: all edits write immediately to browser IndexedDB (`idb-keyval`).
+  - Network-aware synchronization: if internet connectivity drops, the author continues writing and compiling locally without interruption; upon reconnecting, buffered changes synchronize automatically.
+- [ ] **Revision History & Checkpoint Timeline**:
+  - Automated periodic snapshots (every 10 minutes of active editing and on successful compilation builds).
+  - Visual revision history drawer: browse historical revisions, inspect side-by-side Monaco diffs, and restore previous document states in 1 click.
+
+### 11.4 1-Click "Import from Overleaf" & Migration Engine
+- [ ] **Direct Overleaf Link & Token Importer**:
+  - Author inputs an Overleaf project link, read-only token, or git bridge URL.
+  - Automatically fetches and mirrors the remote workspace into an isolated ElseWhere project in under 3 seconds.
+- [ ] **Intelligent ZIP & Directory Ingestion**:
+  - Drag-and-drop Overleaf exported `.zip` archive.
+  - Automatically unpacks nested directory structures, detects entrypoint `main.tex`, parses all image assets, and indexes `references.bib`.
+  - Zero manual re-linking or path adjustment required; author can immediately recompile locally in <350ms.
+- [ ] **Side-by-Side Verification**:
+  - Compares compiled output against the original Overleaf PDF export to ensure 100% typographical parity and zero layout drift.
+
+---
+
+## 👥 Phase 12: Teams, Lab Collaboration & Shared Project Governance `[PLANNED]`
+
+> Enabling academic research labs, university departments, and co-authoring teams to collaborate seamlessly with enterprise-grade access control.
+
+### 12.1 Organization & Team Workspaces
+- [ ] **Multi-Tenant Team Architecture**:
+  - Authors can create or join multiple Organizations (e.g., *Stanford AI Lab*, *Quantum Computing Group*).
+  - Top-left organization and workspace switcher dropdown.
+  - Pooled team AI token allowances and centralized billing management.
+- [ ] **Shared Lab Project Libraries & Assets**:
+  - Lab-wide shared templates (e.g. official departmental thesis guidelines, lab poster themes).
+  - Shared bibliography repositories and central figure asset folders accessible across all lab projects.
+
+### 12.2 Role-Based Access Control (RBAC) & Project Sharing
+- [ ] **Granular Collaborator Permissions**:
+  - **Owner**: Full administrative control, billing ownership, deletion rights, and member management.
+  - **Admin / Co-Lead**: Manage project settings, invite/remove collaborators, and manage cloud integrations.
+  - **Editor / Co-Author**: Full write access to files, ability to trigger compilations, and run AI agents.
+  - **Reviewer / Commenter**: Read-only document access with permission to create review comments and suggest edits.
+  - **Viewer**: Read-only PDF and source code preview without editing rights.
+- [ ] **Secure Collaboration Sharing**:
+  - Invite co-authors via email address or generate secure time-limited sharing links with customizable permission levels.
+  - External reviewer link mode with optional password protection.
+
+### 12.3 Real-Time Collaborative Co-Authoring & Presence
+- [ ] **Multiplayer CRDT Integration (Yjs + Monaco)**:
+  - Real-time character-level synchronization across multiple concurrent authors.
+  - Presence indicator avatars in the header showing active collaborators and their currently edited file.
+  - Color-coded live user carets and text selections in the Monaco editor.
+- [ ] **Threaded Review Comments & Suggestions**:
+  - Anchor comments to specific lines or selected text spans in the LaTeX code.
+  - Reply threads, `@collaborator` mentions with email alerts, and "Resolve Comment" workflow.
+
+---
+
+## 🧬 Phase 13: Autonomous "One-Shot" End-to-End Paper Generation Agent `[PLANNED]`
+
+> A breakthrough autonomous research engineering agent capable of transforming a research idea, dataset notes, or conference CFP into a fully formatted, mathematically sound, literature-grounded, and compilation-verified LaTeX manuscript in a single autonomous execution loop.
+
+### 13.1 End-to-End One-Shot Pipeline Architecture
+- [ ] **Prompt-to-Paper Orchestration Pipeline**:
+  - Author inputs: **Research Title / Topic**, **Core Hypothesis**, **Key Methodological Ideas**, optional **Raw Experimental Data / Plots**, and target **Venue / Style Template** (e.g. IEEE, NeurIPS, Nature).
+  - The Autonomous Agent executes an iterative multi-phase synthesis without requiring manual step-by-step human intervention.
+
+```mermaid
+flowchart TD
+    Input["Author Research Goal & Topic"] --> PhaseA["1. Topic Decomposition & Literature Search<br/>(Queries OpenAlex/arXiv, gathers base papers)"]
+    PhaseA --> PhaseB["2. BibTeX Generation & Citation Indexing<br/>(Populates references.bib with genuine papers)"]
+    PhaseB --> PhaseC["3. Document Outline & Macro Setup<br/>(Constructs main.tex with appropriate packages)"]
+    PhaseC --> PhaseD["4. Deep Section Drafting Loop<br/>(Abstract, Intro, Related Work, Math Formulation)"]
+    PhaseD --> PhaseE["5. Tables, Figures & Algorithmic Blocks<br/>(Builds booktabs tables, algorithmic environments)"]
+    PhaseE --> PhaseF["6. Conclusion, Future Work & Discussion<br/>(Synthesizes findings, limits, and implications)"]
+    PhaseF --> PhaseG["7. Autonomous Test-Compilation & Repair<br/>(Runs compile_and_diagnose, patches errors until 0 issues)"]
+    PhaseG --> FinalPDF["Final Compilable Verified Research Manuscript<br/>(Downloadable PDF + clean modular LaTeX project)"]
+```
+
+### 13.2 Multi-Stage Agentic Drafting Capabilities
+- [ ] **Grounding & Literature Synthesis**:
+  - Autonomously invokes `paperSearch.ts` across OpenAlex and arXiv to find authentic, highly cited foundational papers.
+  - Builds `references.bib` with verified DOIs and cites them accurately throughout the manuscript with `\cite{...}` (zero phantom citations).
+- [ ] **Mathematical Modeling & Theoretical Proof Formulation**:
+  - Generates rigorous formal mathematical definitions, variable notation tables, theorem/lemma environments, and multi-line equations (`align`, `gather`).
+- [ ] **Experimental Benchmarking & Data Tabulation**:
+  - Constructs professional publication-standard `booktabs` tables with bold optimal baselines, error bars ($\pm \sigma$), and clear parameter comparisons.
+  - Formats pseudocode algorithms using `algorithm2e` or `algorithmicx` environments.
+- [ ] **Style & Tone Alignment**:
+  - Adheres strictly to the selected template's structural conventions (e.g., two-column IEEE transactions vs. single-column Nature journal layout).
+
+### 13.3 Autonomous Self-Verification & Multi-Pass Compilation Loop
+- [ ] **Closed-Loop Compilation & Self-Correction**:
+  - After generating all section files (`main.tex`, `sections/*.tex`, `references.bib`), the agent automatically triggers `compile_and_diagnose`.
+  - If compiler syntax errors, unescaped characters (`%`, `_`, `&`), missing package imports, or broken citation keys arise, the agent inspects the diagnostic logs, applies surgical diff patches, and re-compiles autonomously.
+  - Loops until a 100% clean build is achieved with zero fatal errors.
+- [ ] **Execution Progress Modal & Real-Time Section Streaming**:
+  - Author watches the progress live via a dedicated multi-stage checklist modal:
+    - `[✓] Grounding literature across OpenAlex & arXiv (14 papers indexed)`
+    - `[✓] Writing abstract and introduction`
+    - `[✓] Formulating mathematical equations & methodology`
+    - `[✓] Formatting comparative benchmark table`
+    - `[✓] Compiling with Tectonic (Build verified: 0 errors, 8 pages rendered)`
+  - Instant 1-click **"Inspect & Edit in Studio"** button opening the complete generated project in Monaco and PDF.js.
+
+---
+
+## 💻 Phase 14: Native Desktop Application Distribution (Tauri + Local Filesystem) `[PLANNED]`
+
+> Packaging ElseWhere into a blazingly fast, lightweight native desktop binary (<15MB installer, sub-50MB idle RAM) with direct local filesystem read/write access and 100% offline host TeX engine execution without browser sandbox limitations.
+
+### 14.1 Lightweight Tauri v2 + Rust Desktop Core
+- [ ] **Ultra-Lean Native Shell**:
+  - Replaces heavy Chromium/Electron runtimes (>250MB installer, >800MB RAM) with **Tauri v2** and native platform webviews (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux).
+  - Target distribution installer size **<15 MB** and sub-50MB base memory footprint.
+  - Native window chrome, custom glassmorphism title bar, OS dark/light theme synchronization, and native menu bar integration (`File`, `Edit`, `View`, `Compile`, `AI Tools`, `Window`, `Help`).
+
+### 14.2 Direct Local Filesystem I/O & Folder Workspace
+- [ ] **Native Directory Binding**:
+  - Open arbitrary local project folders directly from disk (`~/Documents/Papers/my-neurips-paper`).
+  - Native Rust file watcher (`notify` crate) providing instant, non-polling change detection for external edits (e.g. VS Code, external Git branch switches, Python script plot generation).
+  - Direct local read/write operations bypassing browser `localStorage` and `IndexedDB` 5MB storage limits, enabling massive multi-gigabyte projects with high-resolution TIFF/PDF figures.
+- [ ] **Native File Picker & Drag-and-Drop**:
+  - Native OS file and directory picker dialogues (`rfd` crate).
+  - Direct desktop drag-and-drop ingestion of images, `.bib` files, and `.sty` packages directly into the active editor tree.
+
+### 14.3 True Offline Local Engine Invocation & Process Spawning
+- [ ] **Direct Native Child Process Spawning**:
+  - Direct Rust IPC invocation of host LaTeX binaries (`tectonic`, `pdflatex`, `xelatex`, `lualatex`, `bibtex`, `biber`) without requiring a separate Node.js background server process.
+  - Automatic host toolchain discovery across standard Windows, macOS, and Linux paths (`PATH`, TeX Live, MiKTeX, MacTeX).
+  - Zero-latency bidirectional SyncTeX coordination via native binary pipes.
+- [ ] **Embedded Bundled Tectonic Engine (Optional Portable Mode)**:
+  - Option to embed a self-contained portable Tectonic static binary inside the application bundle.
+  - Zero-configuration setup: users can download the desktop app and compile LaTeX papers instantly without installing any external TeX distribution.
+
+### 14.4 Cross-Platform Native Installers & Auto-Updater
+- [ ] **Multi-Platform Release Targets**:
+  - **Windows**: Signed `.msi` and lightweight portable `.exe`.
+  - **macOS**: Universal signed & notarized `.dmg` (Apple Silicon M1/M2/M3/M4 + Intel x86_64).
+  - **Linux**: Signed `.AppImage`, `.deb`, and Arch Linux AUR package.
+- [ ] **Cryptographic Auto-Updater**:
+  - Built-in background auto-updater via Tauri Updater with Ed25519 cryptographic signature verification.
+  - Seamless background delta updates with zero user workflow interruption.

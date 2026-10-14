@@ -285,9 +285,15 @@ export const PdfViewer: React.FC = () => {
   const textLayerRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const renderTasksRef = useRef<{ [key: number]: any }>({});
   const autoFitRef = useRef<boolean>(true);
-  autoFitRef.current = autoFit;
   const pdfDocRef = useRef<any>(null);
-  pdfDocRef.current = pdfDoc;
+
+  useEffect(() => {
+    autoFitRef.current = autoFit;
+  }, [autoFit]);
+
+  useEffect(() => {
+    pdfDocRef.current = pdfDoc;
+  }, [pdfDoc]);
 
   const [activeHighlight, setActiveHighlight] = useState<{
     page: number;

@@ -9,73 +9,36 @@ export function generateStarterPdf(title: string, message: string): Buffer {
 (${escapePdf(title)}) Tj
 0 -30 Td
 /F1 12 Tf
-(${escapePdf('Latexer Document Preview')}) Tj
+(${escapePdf('ElseWhere Document Preview')}) Tj
 0 -40 Td
 (${escapePdf(message)}) Tj
 0 -20 Td
-(${escapePdf('To enable full LaTeX rendering, run: brew install tectonic')}) Tj
+(${escapePdf('To enable native LaTeX compilation, install tectonic or TeX Live.')}) Tj
 0 -20 Td
-(${escapePdf('Tectonic will automatically fetch packages and compile your documents!')}) Tj
+(${escapePdf('Tectonic auto-fetches packages and compiles in milliseconds.')}) Tj
 ET`;
 
   const streamLength = Buffer.byteLength(content, 'utf-8');
 
-  const pdf = `%PDF-1.4
-1 0 obj
-<<
-  /Type /Catalog
-  /Pages 2 0 R
->>
-endobj
-2 0 obj
-<<
-  /Type /Pages
-  /Kids [3 0 R]
-  /Count 1
->>
-endobj
-3 0 obj
-<<
-  /Type /Page
-  /Parent 2 0 R
-  /MediaBox [0 0 612 792]
-  /Resources <<
-    /Font <<
-      /F1 <<
-        /Type /Font
-        /Subtype /Type1
-        /BaseFont /Helvetica
-      >>
-    >>
-  >>
-  /Contents 4 0 R
->>
-endobj
-4 0 obj
-<<
-  /Length ${streamLength}
->>
-stream
-${content}
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000305 00000 n 
-trailer
-<<
-  /Size 5
-  /Root 1 0 R
->>
-startxref
-${400 + streamLength}
-%%EOF`;
+  const header = '%PDF-1.4\n';
+  const obj1 = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
+  const obj2 = '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n';
+  const obj3 = `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents 4 0 R >>\nendobj\n`;
+  const obj4 = `4 0 obj\n<< /Length ${streamLength} >>\nstream\n${content}\nendstream\nendobj\n`;
 
-  return Buffer.from(pdf, 'utf-8');
+  const offset1 = Buffer.byteLength(header, 'utf-8');
+  const offset2 = offset1 + Buffer.byteLength(obj1, 'utf-8');
+  const offset3 = offset2 + Buffer.byteLength(obj2, 'utf-8');
+  const offset4 = offset3 + Buffer.byteLength(obj3, 'utf-8');
+  const xrefOffset = offset4 + Buffer.byteLength(obj4, 'utf-8');
+
+  const pad = (n: number) => n.toString().padStart(10, '0');
+
+  const xref = `xref\n0 5\n0000000000 65535 f \n${pad(offset1)} 00000 n \n${pad(offset2)} 00000 n \n${pad(offset3)} 00000 n \n${pad(offset4)} 00000 n \n`;
+  const trailer = `trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+
+  const completePdf = header + obj1 + obj2 + obj3 + obj4 + xref + trailer;
+  return Buffer.from(completePdf, 'utf-8');
 }
 
 function escapePdf(str: string): string {

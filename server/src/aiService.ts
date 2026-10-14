@@ -391,8 +391,22 @@ export async function chatWithGemini(params: {
 
   const userMessage = `${params.prompt}${contextAddendum}`;
 
+  // Normalize multi-turn history for Google Generative AI SDK (role: 'user' | 'model', parts: [{ text }])
+  const normalizedHistory = (params.history || [])
+    .map((h: any) => {
+      const role: 'user' | 'model' = (h.role === 'assistant' || h.role === 'model') ? 'model' : 'user';
+      let parts: Array<{ text: string }> = [];
+      if (Array.isArray(h.parts) && h.parts.length > 0) {
+        parts = h.parts.filter((p: any) => p && typeof p.text === 'string');
+      } else if (typeof h.content === 'string' && h.content.trim()) {
+        parts = [{ text: h.content }];
+      }
+      return { role, parts };
+    })
+    .filter((h) => h.parts.length > 0);
+
   const chat = model.startChat({
-    history: params.history || [],
+    history: normalizedHistory,
   });
 
   const result = await chat.sendMessage(userMessage);

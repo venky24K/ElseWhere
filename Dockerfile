@@ -5,7 +5,7 @@
 # -------------------------------------------------------------
 # Stage 1: Build Client (Vite + React SPA)
 # -------------------------------------------------------------
-FROM node:20-bookworm-slim AS client-builder
+FROM node:22-bookworm-slim AS client-builder
 WORKDIR /app/client
 
 COPY client/package*.json ./
@@ -17,7 +17,7 @@ RUN npm run build
 # -------------------------------------------------------------
 # Stage 2: Build Server (Express + TypeScript)
 # -------------------------------------------------------------
-FROM node:20-bookworm-slim AS server-builder
+FROM node:22-bookworm-slim AS server-builder
 WORKDIR /app/server
 
 COPY server/package*.json ./
@@ -29,7 +29,7 @@ RUN npm run build
 # -------------------------------------------------------------
 # Stage 3: Production Runtime
 # -------------------------------------------------------------
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 # Install ca-certificates, curl, fontconfig, TeX Live (pdflatex, latexmk, extra packages)
 ENV DEBIAN_FRONTEND=noninteractive

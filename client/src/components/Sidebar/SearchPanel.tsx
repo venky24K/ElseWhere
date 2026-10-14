@@ -89,7 +89,9 @@ export const SearchPanel: React.FC = () => {
       const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const reg = new RegExp(escapedQuery, regexFlags);
 
-      const updated = current.content.replace(reg, replacement);
+      // Use a replacer function () => replacement to treat replacement text literally
+      // and prevent JavaScript regex from expanding $ tokens (critical for LaTeX math e.g. $x$, $1)
+      const updated = current.content.replace(reg, () => replacement);
       if (updated !== current.content) {
         updateFileContent(file, updated);
         replaceCount++;

@@ -12,8 +12,8 @@ import { parseSyncTeX, SyncTeXData } from './synctex.js';
 
 const execFileAsync = promisify(execFile);
 
-// Common paths on macOS & Linux (containers) for TeX distributions and Tectonic
-const ADDITIONAL_PATHS = [
+// Common paths on macOS, Linux, and Windows for TeX distributions and Tectonic
+const UNIX_PATHS = [
   '/usr/local/bin',
   '/usr/bin',
   '/Library/TeX/texbin',
@@ -21,7 +21,18 @@ const ADDITIONAL_PATHS = [
   '/usr/local/texlive/current/bin/x86_64-linux',
   '/opt/homebrew/bin',
 ];
-const ENHANCED_PATH = `${ADDITIONAL_PATHS.join(':')}:${process.env.PATH || ''}`;
+
+const WIN_PATHS = [
+  'C:\\Program Files\\MiKTeX\\miktex\\bin\\x64',
+  'C:\\Program Files (x86)\\MiKTeX\\miktex\\bin',
+  'C:\\texlive\\2026\\bin\\windows',
+  'C:\\texlive\\2025\\bin\\windows',
+  'C:\\texlive\\2024\\bin\\windows',
+  'C:\\Program Files\\Tectonic',
+];
+
+const EXTRA_PATHS = process.platform === 'win32' ? WIN_PATHS : UNIX_PATHS;
+const ENHANCED_PATH = [process.env.PATH || '', ...EXTRA_PATHS].filter(Boolean).join(path.delimiter);
 
 // Cache of compiled PDFs and synctex in memory for fast serving & bidirectional jump
 export const pdfCache = new Map<
@@ -79,7 +90,10 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
   const startTime = Date.now();
   const buildId = uuidv4();
   const buildDir = path.join(os.tmpdir(), 'latexer-builds', buildId);
-  const mainFile = req.mainFile || 'main.tex';
+  const rawMainFile = req.mainFile || 'main.tex';
+  // Sanitize mainFile to prevent path traversal or option injection
+  const safeMainFile = path.normalize(rawMainFile).replace(/^([a-zA-Z]:|[\\/])*/, '').replace(/(\.\.[\\/])+/g, '');
+  const mainFile = safeMainFile || 'main.tex';
 
   const engineStatus = await detectEngines();
 
@@ -107,7 +121,7 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
         },
       ],
       warnings: [],
-      rawLog: `[Latexer Host Checker]\n${engineStatus.instructions}\n\nChecked paths:\n${ENHANCED_PATH.split(':').slice(0, 5).join('\n')}`,
+      rawLog: `[Latexer Host Checker]\n${engineStatus.instructions}\n\nChecked paths:\n${ENHANCED_PATH.split(path.delimiter).slice(0, 5).join('\n')}`,
     };
   }
 
@@ -122,10 +136,20 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     // 1. Create temporary isolated build directory
     await fs.mkdir(buildDir, { recursive: true });
 
-    // 2. Write virtual files to disk (handling subdirectories and images)
+    // 2. Write virtual files to disk with strict path containment (SEC-02)
+    const resolvedBuildDir = path.resolve(buildDir);
     for (const file of req.files) {
-      const sanitizedPath = path.normalize(file.path).replace(/^(\.\.[\/\\])+/, '');
-      const filePath = path.join(buildDir, sanitizedPath);
+      const safeRelativePath = path.normalize(file.path)
+        .replace(/^([a-zA-Z]:|[\\/])*/, '')
+        .replace(/(\.\.[\\/])+/g, '');
+      const filePath = path.resolve(buildDir, safeRelativePath);
+
+      // Verify the target file is strictly inside the isolated build directory
+      if (!filePath.startsWith(resolvedBuildDir + path.sep) && filePath !== resolvedBuildDir) {
+        console.warn(`[Security] Blocked path traversal attempt: ${file.path}`);
+        continue;
+      }
+
       await fs.mkdir(path.dirname(filePath), { recursive: true });
 
       if (file.isBinary) {
@@ -136,16 +160,16 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
       }
     }
 
-    // 3. Prepare execution arguments
+    // 3. Prepare execution arguments with -no-shell-escape (SEC-01)
     let cmd = selectedEngine;
     let args: string[] = [];
 
     if (selectedEngine === 'tectonic') {
-      args = ['--bundle', 'https://data1b.fullyjustified.net/tlextras-2022.0r0.tar', '-o', '.', '--keep-logs', '--synctex', mainFile];
+      args = ['-o', '.', '--keep-logs', '--synctex', mainFile];
     } else if (selectedEngine === 'latexmk') {
-      args = ['-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
+      args = ['-pdf', '-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
     } else if (selectedEngine === 'pdflatex' || selectedEngine === 'xelatex') {
-      args = ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
+      args = ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
     }
 
     let stdout = '';
@@ -199,7 +223,7 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     // If initial engine failed to produce PDF, attempt graceful fallback to pdflatex
     if (!success && selectedEngine !== 'pdflatex' && engineStatus.availableEngines.pdflatex) {
       try {
-        const fallbackRes = await execFileAsync('pdflatex', ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile], {
+        const fallbackRes = await execFileAsync('pdflatex', ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile], {
           cwd: buildDir,
           timeout: 120000,
           env: { ...process.env, PATH: ENHANCED_PATH },
