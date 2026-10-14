@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useAiStore } from '../../store/useAiStore';
 import {
+  FolderKanban,
   FilePlus,
   UploadCloud,
   FileDown,
@@ -41,6 +43,7 @@ import {
 } from 'lucide-react';
 
 export const TopNav: React.FC = () => {
+  const navigate = useNavigate();
   const {
     projectName,
     setProjectName,
@@ -52,17 +55,25 @@ export const TopNav: React.FC = () => {
     toggleLogsDrawer,
     setTemplateModalOpen,
     setHostSetupModalOpen,
+    importOverleafZip,
   } = useProjectStore();
 
   const { viewMode, setViewMode, resetLayout } = useLayoutStore();
   const setIsSettingsOpen = useSettingsStore((s) => s.setIsOpen);
   const setSettingsTab = useSettingsStore((s) => s.setActiveTab);
-  const { toggleAiSidebar, openInlineCommand, clearChat } = useAiStore();
+  const {
+    toggleAiSidebar,
+    openInlineCommand,
+    clearChat,
+    setOneShotModalOpen,
+    setVisionStudioModalOpen,
+  } = useAiStore();
 
   // Menu bar state
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
 
   // Modals for Help menu
   const [cheatsheetOpen, setCheatsheetOpen] = useState(false);
@@ -121,6 +132,20 @@ export const TopNav: React.FC = () => {
     setActiveMenu(null);
   };
 
+  const handleZipImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.name.endsWith('.zip')) {
+      try {
+        const newId = await importOverleafZip(file);
+        navigate(`/project/${newId}`);
+      } catch (err: any) {
+        alert(`Failed to import ZIP: ${err.message || 'Corrupted archive'}`);
+      }
+    }
+    e.target.value = '';
+    setActiveMenu(null);
+  };
+
   const menuItems = [
     {
       id: 'File',
@@ -137,6 +162,23 @@ export const TopNav: React.FC = () => {
           icon: <UploadCloud size={14} />,
           shortcut: '',
           action: handleTriggerUpload,
+        },
+        {
+          label: 'Import Overleaf (ZIP)...',
+          icon: <FolderKanban size={14} />,
+          shortcut: '',
+          action: () => {
+            zipInputRef.current?.click();
+            setActiveMenu(null);
+          },
+        },
+        {
+          label: 'Projects Dashboard...',
+          icon: <FolderKanban size={14} />,
+          shortcut: '',
+          action: () => {
+            navigate('/projects');
+          },
         },
         { divider: true },
         {
@@ -201,6 +243,24 @@ export const TopNav: React.FC = () => {
           shortcut: '⌘K',
           action: () => {
             openInlineCommand('', null);
+            setActiveMenu(null);
+          },
+        },
+        {
+          label: 'One-Shot Paper Agent...',
+          icon: <Sparkles size={14} className="text-amber-500" />,
+          shortcut: '',
+          action: () => {
+            setOneShotModalOpen(true);
+            setActiveMenu(null);
+          },
+        },
+        {
+          label: 'Vision & TikZ Studio...',
+          icon: <Image size={14} className="text-sky-400" />,
+          shortcut: '',
+          action: () => {
+            setVisionStudioModalOpen(true);
             setActiveMenu(null);
           },
         },
@@ -477,12 +537,24 @@ export const TopNav: React.FC = () => {
         onChange={handleFileUpload}
         className="hidden"
       />
+      {/* Hidden file input for Overleaf / LaTeX ZIP import */}
+      <input
+        type="file"
+        ref={zipInputRef}
+        accept=".zip"
+        onChange={handleZipImport}
+        className="hidden"
+      />
 
       <header className="h-10 min-h-[40px] bg-sidebar border-b border-border-subtle flex items-center justify-between px-3 z-20 select-none">
         {/* Left: Brand and Desktop Menus */}
         <div className="flex items-center gap-2 shrink-0">
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-1.5 mr-1">
+          <Link
+            to="/projects"
+            title="Return to Projects Dashboard"
+            className="flex items-center gap-1.5 mr-1 hover:opacity-80 transition-opacity no-underline"
+          >
             <img
               src="/logo.svg"
               alt="ElseWhere Logo"
@@ -491,7 +563,7 @@ export const TopNav: React.FC = () => {
             <span className="font-bold text-[14px] tracking-tight text-text-primary">
               ElseWhere
             </span>
-          </div>
+          </Link>
 
           <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
 
@@ -564,12 +636,21 @@ export const TopNav: React.FC = () => {
           </nav>
         </div>
 
-        {/* Center / Title Bar: Full Document Name */}
-        <div className="flex-1 flex items-center justify-center px-4 min-w-0">
+        {/* Center / Title Bar: Breadcrumb + Full Document Name */}
+        <div className="flex-1 flex items-center justify-center px-4 min-w-0 gap-2">
+          <Link
+            to="/projects"
+            className="text-text-muted hover:text-brand text-xs font-semibold flex items-center gap-1 transition-colors no-underline shrink-0"
+            title="Return to Projects Dashboard"
+          >
+            <FolderKanban size={13} />
+            <span>Projects</span>
+          </Link>
+          <span className="text-text-muted text-xs">/</span>
           <input
             type="text"
-            className="bg-card/40 hover:bg-card focus:bg-card border border-border-subtle/40 hover:border-border-subtle focus:border-brand/40 text-text-primary text-xs font-medium px-4 py-1 rounded-md transition-all text-center min-w-[280px] max-w-[560px] outline-none shadow-2xs"
-            style={{ width: `${Math.min(540, Math.max(320, (projectName?.length || 10) * 8.5 + 48))}px` }}
+            className="bg-card/40 hover:bg-card focus:bg-card border border-border-subtle/40 hover:border-border-subtle focus:border-brand/40 text-text-primary text-xs font-medium px-3 py-1 rounded-md transition-all text-center min-w-[200px] max-w-[500px] outline-none shadow-2xs"
+            style={{ width: `${Math.min(500, Math.max(220, (projectName?.length || 10) * 8.5 + 32))}px` }}
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
             title="Click to rename document"
@@ -579,6 +660,27 @@ export const TopNav: React.FC = () => {
 
         {/* Right: Layout Switcher & Settings */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* One-Shot Paper & Vision Studio Quick Triggers */}
+          <button
+            type="button"
+            onClick={() => setOneShotModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 transition-all cursor-pointer shadow-2xs"
+            title="One-Shot Autonomous Manuscript Generation Agent (Phase 13)"
+          >
+            <Sparkles size={13} />
+            <span className="hidden sm:inline">Write Paper</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVisionStudioModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 transition-all cursor-pointer shadow-2xs"
+            title="Vision OCR & TikZ Vectorizer Studio (Phase 6.4)"
+          >
+            <Image size={13} />
+            <span className="hidden sm:inline">Vision / TikZ</span>
+          </button>
+
           {/* Workspace Layout Mode Segmented Control */}
           <div
             className="flex items-center bg-card-hover border border-border-subtle rounded p-0.5 gap-0.5"

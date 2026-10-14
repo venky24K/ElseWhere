@@ -15,6 +15,8 @@ import {
   dispatchAiDetect,
   dispatchPaperSynthesis,
   dispatchAiGeneratePlan,
+  dispatchVisionToLatex,
+  dispatchOneShotPaperGeneration,
 } from './aiService.js';
 import { searchAcademicPapers } from './paperSearch.js';
 
@@ -345,6 +347,55 @@ app.post('/api/ai/plan', async (req, res) => {
   } catch (err: any) {
     console.error('Agent Plan Error:', err);
     res.status(500).json({ error: err.message || 'Agent plan generation failed' });
+  }
+});
+
+// Phase 6.4: Multimodal Formula OCR, Plot-to-TikZ & Table Extraction
+app.post('/api/ai/vision-to-latex', async (req, res) => {
+  try {
+    const { imageBase64, mode, additionalInstructions, model, apiKey, provider } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'Image (base64) is required' });
+    }
+
+    const result = await dispatchVisionToLatex({
+      imageBase64,
+      mode: mode || 'equation',
+      additionalInstructions,
+      model,
+      apiKey,
+      provider,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('Vision-to-LaTeX Error:', err);
+    res.status(500).json({ error: err.message || 'Vision-to-LaTeX transcription failed' });
+  }
+});
+
+// Phase 13: Autonomous One-Shot End-to-End Manuscript Generation Agent
+app.post('/api/ai/one-shot-paper', async (req, res) => {
+  try {
+    const { topic, hypothesis, venue, referencePapers, model, apiKey, provider } = req.body;
+    if (!topic || typeof topic !== 'string' || !topic.trim()) {
+      return res.status(400).json({ error: 'Paper topic / title is required' });
+    }
+
+    const result = await dispatchOneShotPaperGeneration({
+      topic: topic.trim(),
+      hypothesis,
+      venue,
+      referencePapers,
+      model,
+      apiKey,
+      provider,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('One-Shot Manuscript Generation Error:', err);
+    res.status(500).json({ error: err.message || 'One-shot manuscript synthesis failed' });
   }
 });
 

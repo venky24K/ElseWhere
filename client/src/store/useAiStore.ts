@@ -24,6 +24,8 @@ interface AiState {
   supportedModels: SupportedModel[];
   aiSidebarOpen: boolean;
   settingsModalOpen: boolean;
+  oneShotModalOpen: boolean;
+  visionStudioModalOpen: boolean;
 
   // Chat
   chatMessages: ChatMessage[];
@@ -61,6 +63,8 @@ interface AiState {
   setIncludeDocContext: (enabled: boolean) => void;
   toggleAiSidebar: (open?: boolean) => void;
   setSettingsModalOpen: (open: boolean) => void;
+  setOneShotModalOpen: (open: boolean) => void;
+  setVisionStudioModalOpen: (open: boolean) => void;
   sendChatMessage: (prompt: string, documentContext?: string, selectedText?: string) => Promise<void>;
   abortChat: () => void;
   clearChat: () => void;
@@ -175,6 +179,11 @@ export const useAiStore = create<AiState>((set, get) => ({
   supportedModels: INITIAL_SUPPORTED_MODELS,
   aiSidebarOpen: true,
   settingsModalOpen: false,
+  oneShotModalOpen: false,
+  visionStudioModalOpen: false,
+
+  setOneShotModalOpen: (open) => set({ oneShotModalOpen: open }),
+  setVisionStudioModalOpen: (open) => set({ visionStudioModalOpen: open }),
 
   ghostTextEnabled: typeof window !== 'undefined'
     ? localStorage.getItem(LOCAL_GHOST_TEXT_KEY) !== 'false'

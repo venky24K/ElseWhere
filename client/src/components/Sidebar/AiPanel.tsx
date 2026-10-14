@@ -22,6 +22,7 @@ import {
   X,
   MessageSquare,
   ListOrdered,
+  Sparkles,
 } from 'lucide-react';
 
 /** Helper to provide color-coded file extension badges */
@@ -297,6 +298,8 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
     includeDocContext,
     setIncludeDocContext,
     insertAtCursor,
+    setOneShotModalOpen,
+    setVisionStudioModalOpen,
   } = useAiStore();
 
   // Agent Store
@@ -556,6 +559,27 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
                 </div>
                 <div className="text-text-secondary leading-relaxed">
                   The agent plans multi-step tasks, surgically edits workspace files, runs compilation tests, and repairs LaTeX errors automatically.
+                </div>
+
+                {/* Specialized Studios */}
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setOneShotModalOpen(true)}
+                    className="flex items-center gap-1.5 p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-500 text-left text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    <Sparkles size={14} className="shrink-0" />
+                    <span>One-Shot Paper</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVisionStudioModalOpen(true)}
+                    className="flex items-center gap-1.5 p-2 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 text-sky-400 text-left text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    <CornerDownLeft size={14} className="shrink-0" />
+                    <span>Vision OCR / TikZ</span>
+                  </button>
                 </div>
 
                 <div className="font-semibold text-text-primary text-[11px] mt-1 uppercase tracking-wider">

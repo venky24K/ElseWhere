@@ -19,7 +19,7 @@
 | **Phase 7** | **Sandboxing, Decoupled Queue & WASM** | Docker/Firecracker, BullMQ + Redis, Client-side WASM TeX (Offline) | `[PLANNED]` | Q3 2026 |
 | **Phase 8** | **Multiplayer CRDTs & Git Sync** | Yjs Real-Time Engine, Track Changes, GitHub Two-Way Sync | `[PLANNED]` | Q4 2026 |
 | **Phase 9** | **Enterprise Identity & Production Scale** | PostgreSQL/Drizzle, ORCID/SAML SSO, RBAC, Kubernetes Helm | `[PLANNED]` | Q4 2026 |
-| **Phase 10** | **Public Web Portal & Commercial Hub** | Landing Page (`/`), Docs (`/docs`), Features (`/features`), Pricing + AI Keys (`/pricing`), Public Templates | `[PLANNED]` | Q3 2026 |
+| **Phase 10** | **Public Web Portal & Commercial Hub** | Landing Page (`/`), Docs (`/docs`), Features (`/features`), Pricing + AI Keys (`/pricing`), Public Templates | `[COMPLETED]` | Delivered |
 | **Phase 11** | **Multi-Project Hub & Continuous DB Sync** | Project Dashboard (`/projects`), Folder Isolation, Background Cloud Auto-Save, PostgreSQL/Drizzle Sync | `[PLANNED]` | Q3 2026 |
 | **Phase 12** | **Teams, Labs & Collaborative Workspaces** | Organization Workspaces, Team Seats, Member RBAC, Shared Project Libraries | `[PLANNED]` | Q4 2026 |
 | **Phase 13** | **Autonomous "One-Shot" Paper Generation Agent** | End-to-End Manuscript Synthesis (Hypothesis ➔ Full Draft + Math + Citations + Verified Build in 1-Click) | `[PLANNED]` | Q4 2026 |
@@ -414,17 +414,15 @@ flowchart TD
   - Upload research paper PDFs; extracts text, abstracts, and tables client-side via `pdfjs-dist`.
   - Synthesizes related work sections, benchmark tables, and comparative analyses directly into the manuscript.
 
-### 6.4 Multimodal "Screenshot-to-LaTeX", Plot-to-TikZ & Isolated Studio `[PLANNED]`
-- [ ] **Multimodal Formula & Whiteboard OCR (Vision-to-LaTeX)**:
+### 6.4 Multimodal "Screenshot-to-LaTeX", Plot-to-TikZ & Isolated Studio `[COMPLETED]`
+- [x] **Multimodal Formula & Whiteboard OCR (Vision-to-LaTeX)**:
   - Paste or drag screenshot of handwritten equations, textbook formulas, or whiteboard derivations directly into Monaco editor.
-  - Powered by Gemini Multimodal: parses multi-line symbols, matrices, summations, and integral bounds into clean, idiomatic `\begin{align}` or `\begin{equation}` environments in <1s.
-- [ ] **Diagram & Plot-to-TikZ Vectorizer**:
+  - Powered by Gemini / Groq Multimodal: parses multi-line symbols, matrices, summations, and integral bounds into clean, idiomatic `\begin{align}` or `\begin{equation}` environments in <1s.
+- [x] **Diagram & Plot-to-TikZ Vectorizer**:
   - Paste raster plots, architecture flowcharts, neural network diagrams, or circuit schematics.
   - AI vision engine converts the image into clean, editable vector `\begin{tikzpicture}` code using modern TikZ libraries (`shapes`, `arrows.meta`, `positioning`).
-- [ ] **Isolated Live TikZ & PGFPlots Studio**:
-  - Dedicated playground isolating `\begin{tikzpicture}` blocks into lightweight standalone templates.
-  - Micro-compilation (<100ms) directly to standalone vector SVG or PDF preview without recompiling the entire book/manuscript.
-  - Export diagram directly as standalone `.svg`, `.pdf`, or publication-grade high-resolution 600 DPI `.png`.
+- [x] **VisionTikzStudioModal**:
+  - Dedicated interactive modal with clipboard paste detection (Ctrl+V), image preview, formula OCR, diagram-to-TikZ vectorization, and 1-click cursor insertion into Monaco editor.
 
 ### 6.5 Visual Rendered PDF Diffing `[PLANNED]`
 - [ ] Compare rendered PDF pages between compilation builds, saved checkpoints, or git commits.
@@ -619,46 +617,46 @@ flowchart TD
 
 ---
 
-## 🌐 Phase 10: Public Web Ecosystem & Commercial Portal `[PLANNED]`
+## 🌐 Phase 10: Public Web Ecosystem & Commercial Portal `[COMPLETED]`
 
 > Building the public-facing educational, marketing, and commercial web surface, strictly decoupled from the heavy studio workspace to ensure instant sub-100ms first contentful paint (FCP) and top-tier SEO discoverability.
 
 ### 10.1 High-Conversion Scientific Landing Page (`/`)
-- [ ] **Hero Section & Live Interactive Preview**:
+- [x] **Hero Section & Live Interactive Preview**:
   - Live side-by-side interactive hero demonstration showcasing instantaneous local compilation and Monaco LaTeX editing without requiring sign-up.
   - Floating feature pills: *Local-First Speed (Zero Cloud Queues)*, *Autonomous AI Agent*, *Real-Time SyncTeX*, *250M+ Paper Search*.
-- [ ] **Interactive Compilation Latency Benchmark**:
+- [x] **Interactive Compilation Latency Benchmark**:
   - Visual stopwatch comparison: Traditional Cloud Compilers (12–25s cold queues) vs. ElseWhere Local-First Tectonic Engine (<350ms instant builds).
-- [ ] **Integrated Public Template Showcase**:
+- [x] **Integrated Public Template Showcase**:
   - Direct template carousel on the landing page (Nature/IEEE Paper, ACM Conference, PhD Thesis, Modern CV, Beamer Slides).
   - 1-Click **"Start Writing with this Template"** button routing directly into the authenticated studio workspace with the selected files pre-loaded.
-- [ ] **Social Proof & Academic Lab Endorsements**:
+- [x] **Social Proof & Academic Lab Endorsements**:
   - University and research institute logos, quotes from computational researchers, and GitHub star badge.
-- [ ] **Call to Action (CTA)**:
+- [x] **Call to Action (CTA)**:
   - Frictionless "Start Researching Free" and "Explore Public Demos" conversion triggers.
 
 ### 10.2 Comprehensive Documentation & LaTeX Knowledge Base (`/docs`)
-- [ ] **Interactive User Manual & Tutorials**:
+- [x] **Interactive User Manual & Tutorials**:
   - Fast-track getting started guide: Local installation, host engine discovery (MacTeX, TeXLive, Tectonic), and virtual workspace mechanics.
   - Comprehensive LaTeX mathematical typesetting guide with 1-click copyable formulas (`amsmath`, `amssymb`, `mathtools`).
   - Table crafting mastery: `booktabs` styling guidelines, column alignments, and multi-row layout recipes.
-- [ ] **AI Copilot & Autonomous Agent Handbook**:
+- [x] **AI Copilot & Autonomous Agent Handbook**:
   - Best-practice prompting for academic writing, literature reviews, and equation proof generation.
   - Explaining the autonomous `Plan ➔ Act ➔ Observe ➔ Verify` agentic loop and compiler self-healing.
   - Academic humanizer scoring rubric and perplexity tuning recommendations.
-- [ ] **Full-Text Searchable Knowledge Base**:
+- [x] **Full-Text Searchable Knowledge Base**:
   - Integrated Algolia / Pagefind client-side search across all docs articles.
   - Keyboard shortcut cheat sheet modal (`⌘Enter` recompile, `⌘K` inline AI, `⌘J` diagnostics, `⌘B` sidebar).
 
 ### 10.3 Interactive Feature Tour (`/features`)
-- [ ] Dedicated feature showcase deep-diving into ElseWhere’s architectural advantages:
+- [x] Dedicated feature showcase deep-diving into ElseWhere’s architectural advantages:
   - **Local-First vs. Cloud-Only Architecture**: Detailed breakdown of privacy, offline resilience, and compute speed.
   - **Bi-Directional SyncTeX**: Sub-pixel word-level jumping interactive demonstration.
   - **Dual AI Engine**: Groq LPU sub-300ms inference alongside Google Gemini native reasoning.
   - **Literature Web Search**: OpenAlex & arXiv integration indexing 250M+ scholarly records with 1-click BibTeX ingestion.
 
 ### 10.4 Pricing, Subscription Plans & Managed AI Key Tiers (`/pricing`)
-- [ ] **Transparent Academic & Commercial Subscription Matrix**:
+- [x] **Transparent Academic & Commercial Subscription Matrix**:
   - **Free Tier (Hobbyist & Student)**:
     - Unlimited local compilation on your machine.
     - All starter templates included.
@@ -684,40 +682,39 @@ flowchart TD
   - Usage dashboard displaying monthly AI token consumption, active cloud storage quota, and active compile credits.
 
 ### 10.5 Public Template Gallery & Instant Studio Forking (`/templates`)
-- [ ] Dedicated public marketplace to discover, preview, and fork community & official LaTeX templates:
+- [x] Dedicated public marketplace to discover, preview, and fork community & official LaTeX templates:
   - Filter by category: **Journal Papers**, **Conference Articles**, **Dissertations / Theses**, **Presentations (Beamer)**, **CVs & Resumes**, **Formal Letters**.
   - Interactive PDF preview rendered directly in the browser via PDF.js before creating a project.
   - 1-Click **"Open Template in Studio"** button: seamlessly clones virtual files into a new project and navigates to `/project/:id`.
 
 ---
 
-## 📁 Phase 11: Multi-Project Hub, File Isolation & Continuous Cloud DB Auto-Save `[PLANNED]`
+## 📁 Phase 11: Multi-Project Hub, File Isolation & Continuous Cloud DB Auto-Save `[IN PROGRESS]`
 
 > Elevating ElseWhere from a single-project prototype into a complete multi-project research hub with strict file isolation and resilient cloud database auto-save.
 
-### 11.1 Project Management Hub (`/projects` / `/dashboard`)
-- [ ] **Centralized Projects Dashboard**:
-  - Visual grid and list view of all author projects with live compiled PDF thumbnail previews.
-  - Search bar with instant filtering by project name, tags (e.g. `#machine-learning`, `#ieee`, `#dissertation`), and last-modified date.
-  - Sorting options: *Recently Opened*, *Compilation Date*, *Alphabetical*, *Starred/Favorites*.
-- [ ] **Project Creation & Import Modal**:
-  - Create blank project with custom entrypoint file selection.
-  - Create from official starter templates or team-shared templates.
-  - Import existing project from local `.zip` archive or multi-file folder picker.
-  - Clone directly from public or private GitHub / GitLab repository URL.
-- [ ] **Project Lifecycle Actions**:
-  - Rename project, update description, duplicate project snapshot, archive project, or permanently delete.
-  - 1-Click **"Download Complete Project (ZIP)"** and **"Download Latest PDF"**.
+### 11.1 Project Management Hub (`/projects` / `/dashboard`) `[COMPLETED]`
+- [x] **Centralized Projects Dashboard**:
+  - Visual grid of all author projects with live file count badges, tags, and timestamps.
+  - Search bar with instant filtering by project name, tags (e.g. `#academic`, `#conference`, `#dissertation`), and last-modified date.
+  - Sorting & filtering: *All Workspaces*, *Starred/Favorites*.
+- [x] **Project Creation & Import Modal**:
+  - Create blank project or scaffold directly from starter templates (Academic Paper, Slides, Resume, Minimal).
+  - Drag-and-drop Overleaf exported `.zip` archive or multi-file picker.
+- [x] **Project Lifecycle Actions**:
+  - Rename project, duplicate project snapshot, toggle favorites, and permanently delete with confirmation modal.
+  - 1-Click **"Open in Studio"** navigating to isolated `/project/:projectId` workspace.
 
-### 11.2 Strict File System Isolation per Project
-- [ ] **Physical & Virtual Directory Partitioning**:
-  - Every project receives an isolated, unique namespace directory: `/projects/<projectId>/...`.
-  - Virtual files, uploaded figure assets (PNG, JPG, PDF), references (`references.bib`), compilation artifacts (`main.pdf`, `main.log`, `.synctex.gz`), and AI chat histories are strictly partitioned.
-  - Prevents filename collisions and cross-project contamination when compiling simultaneously.
+### 11.2 Strict File System Isolation per Project `[COMPLETED]`
+- [x] **Physical & Virtual Directory Partitioning**:
+  - Every project receives an isolated, unique namespace: `latexer_project_data_<projectId>`.
+  - Manifest registry `latexer_projects_manifest_v2` tracks metadata across all workspaces.
+  - Virtual files, active tabs, open files, and selected compilation engines are strictly partitioned per project.
+  - Prevents cross-project contamination and state overwrite.
 
 ### 11.3 Continuous Cloud Database Sync & Background Auto-Save
 - [ ] **Debounced Real-Time Synchronization Engine**:
-  - Background auto-save worker debounces typing activity (e.g., 800ms idle timer) and computes incremental patch diffs.
+  - Background auto-save worker debounces typing activity (e.g., 600ms idle timer) and computes incremental patch diffs.
   - Seamlessly persists project metadata and virtual file buffers to cloud database (PostgreSQL with Drizzle ORM / Supabase).
 - [ ] **Optimistic Local Caching with Offline Resilience**:
   - Local-first architecture: all edits write immediately to browser IndexedDB (`idb-keyval`).
@@ -726,16 +723,12 @@ flowchart TD
   - Automated periodic snapshots (every 10 minutes of active editing and on successful compilation builds).
   - Visual revision history drawer: browse historical revisions, inspect side-by-side Monaco diffs, and restore previous document states in 1 click.
 
-### 11.4 1-Click "Import from Overleaf" & Migration Engine
-- [ ] **Direct Overleaf Link & Token Importer**:
-  - Author inputs an Overleaf project link, read-only token, or git bridge URL.
-  - Automatically fetches and mirrors the remote workspace into an isolated ElseWhere project in under 3 seconds.
-- [ ] **Intelligent ZIP & Directory Ingestion**:
-  - Drag-and-drop Overleaf exported `.zip` archive.
-  - Automatically unpacks nested directory structures, detects entrypoint `main.tex`, parses all image assets, and indexes `references.bib`.
-  - Zero manual re-linking or path adjustment required; author can immediately recompile locally in <350ms.
-- [ ] **Side-by-Side Verification**:
-  - Compares compiled output against the original Overleaf PDF export to ensure 100% typographical parity and zero layout drift.
+### 11.4 1-Click "Import from Overleaf" & Migration Engine `[COMPLETED]`
+- [x] **Intelligent ZIP Ingestion Engine (`zipImporter.ts`)**:
+  - Drag-and-drop or select Overleaf exported `.zip` archive.
+  - Automatically unpacks nested directory structures, detects entrypoint `main.tex`, parses all image assets as base64, indexes `references.bib`, and strips OS/LaTeX build artifacts.
+  - Extracts genuine paper title from `\title{...}` and registers an isolated project.
+  - Navigates immediately to `/project/:id` and triggers automatic native compilation in <350ms.
 
 ---
 
@@ -774,13 +767,13 @@ flowchart TD
 
 ---
 
-## 🧬 Phase 13: Autonomous "One-Shot" End-to-End Paper Generation Agent `[PLANNED]`
+## 🧬 Phase 13: Autonomous "One-Shot" End-to-End Paper Generation Agent `[COMPLETED]`
 
 > A breakthrough autonomous research engineering agent capable of transforming a research idea, dataset notes, or conference CFP into a fully formatted, mathematically sound, literature-grounded, and compilation-verified LaTeX manuscript in a single autonomous execution loop.
 
-### 13.1 End-to-End One-Shot Pipeline Architecture
-- [ ] **Prompt-to-Paper Orchestration Pipeline**:
-  - Author inputs: **Research Title / Topic**, **Core Hypothesis**, **Key Methodological Ideas**, optional **Raw Experimental Data / Plots**, and target **Venue / Style Template** (e.g. IEEE, NeurIPS, Nature).
+### 13.1 End-to-End One-Shot Pipeline Architecture `[COMPLETED]`
+- [x] **Prompt-to-Paper Orchestration Pipeline**:
+  - Author inputs: **Research Title / Topic**, **Core Hypothesis**, and target **Venue / Style Template** (e.g. NeurIPS, ICML, IEEE, Nature, General).
   - The Autonomous Agent executes an iterative multi-phase synthesis without requiring manual step-by-step human intervention.
 
 ```mermaid
@@ -795,31 +788,29 @@ flowchart TD
     PhaseG --> FinalPDF["Final Compilable Verified Research Manuscript<br/>(Downloadable PDF + clean modular LaTeX project)"]
 ```
 
-### 13.2 Multi-Stage Agentic Drafting Capabilities
-- [ ] **Grounding & Literature Synthesis**:
+### 13.2 Multi-Stage Agentic Drafting Capabilities `[COMPLETED]`
+- [x] **Grounding & Literature Synthesis**:
   - Autonomously invokes `paperSearch.ts` across OpenAlex and arXiv to find authentic, highly cited foundational papers.
   - Builds `references.bib` with verified DOIs and cites them accurately throughout the manuscript with `\cite{...}` (zero phantom citations).
-- [ ] **Mathematical Modeling & Theoretical Proof Formulation**:
+- [x] **Mathematical Modeling & Theoretical Proof Formulation**:
   - Generates rigorous formal mathematical definitions, variable notation tables, theorem/lemma environments, and multi-line equations (`align`, `gather`).
-- [ ] **Experimental Benchmarking & Data Tabulation**:
-  - Constructs professional publication-standard `booktabs` tables with bold optimal baselines, error bars ($\pm \sigma$), and clear parameter comparisons.
-  - Formats pseudocode algorithms using `algorithm2e` or `algorithmicx` environments.
-- [ ] **Style & Tone Alignment**:
-  - Adheres strictly to the selected template's structural conventions (e.g., two-column IEEE transactions vs. single-column Nature journal layout).
+- [x] **Experimental Benchmarking & Data Tabulation**:
+  - Constructs professional publication-standard `booktabs` tables with bold optimal baselines, error bars, and clear parameter comparisons.
+- [x] **Style & Tone Alignment**:
+  - Adheres strictly to the selected template's structural conventions (e.g., two-column NeurIPS vs. single-column Nature layout).
 
-### 13.3 Autonomous Self-Verification & Multi-Pass Compilation Loop
-- [ ] **Closed-Loop Compilation & Self-Correction**:
-  - After generating all section files (`main.tex`, `sections/*.tex`, `references.bib`), the agent automatically triggers `compile_and_diagnose`.
-  - If compiler syntax errors, unescaped characters (`%`, `_`, `&`), missing package imports, or broken citation keys arise, the agent inspects the diagnostic logs, applies surgical diff patches, and re-compiles autonomously.
-  - Loops until a 100% clean build is achieved with zero fatal errors.
-- [ ] **Execution Progress Modal & Real-Time Section Streaming**:
-  - Author watches the progress live via a dedicated multi-stage checklist modal:
-    - `[✓] Grounding literature across OpenAlex & arXiv (14 papers indexed)`
-    - `[✓] Writing abstract and introduction`
-    - `[✓] Formulating mathematical equations & methodology`
-    - `[✓] Formatting comparative benchmark table`
-    - `[✓] Compiling with Tectonic (Build verified: 0 errors, 8 pages rendered)`
-  - Instant 1-click **"Inspect & Edit in Studio"** button opening the complete generated project in Monaco and PDF.js.
+### 13.3 Autonomous Self-Verification & Multi-Pass Compilation Loop `[COMPLETED]`
+- [x] **Closed-Loop Compilation & Self-Correction**:
+  - After generating all section files (`main.tex`, `references.bib`), the server automatically triggers `compileWorkspace`.
+  - If compiler syntax errors, unescaped characters (`%`, `_`), or missing package imports arise, the agent inspects the diagnostic logs, applies surgical diff patches, and re-compiles autonomously.
+- [x] **Execution Progress Modal & Real-Time Section Streaming**:
+  - Author watches the progress live via `OneShotManuscriptModal.tsx`:
+    - `[✓] Grounding literature across OpenAlex & arXiv`
+    - `[✓] Synthesizing verified references.bib citation index`
+    - `[✓] Drafting sections, mathematical proofs & algorithms`
+    - `[✓] Generating comparative booktabs benchmark table`
+    - `[✓] Compiling & verifying with Tectonic sandbox`
+  - Instant 1-click **"Open in New Studio Workspace"** and **"Insert in Current Workspace"**.
 
 ---
 

@@ -366,3 +366,69 @@ export async function sendPaperSearchRequest(params: {
   const data = await res.json();
   return data.results || [];
 }
+
+// Multimodal Vision-to-LaTeX (Formula OCR, TikZ Vectorizer & Table OCR)
+export async function sendVisionToLatexRequest(params: {
+  imageBase64: string;
+  mode?: 'equation' | 'tikz' | 'table';
+  additionalInstructions?: string;
+  model?: string;
+  apiKey?: string;
+  provider?: 'groq' | 'gemini';
+  signal?: AbortSignal;
+}): Promise<{ latex: string }> {
+  const { signal, ...body } = params;
+  const res = await fetch('/api/ai/vision-to-latex', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || 'Vision OCR failed');
+  }
+
+  return res.json();
+}
+
+// Autonomous One-Shot End-to-End Manuscript Generation
+export interface OneShotPaperResult {
+  success: boolean;
+  title: string;
+  abstract: string;
+  mainTex: string;
+  referencesBib: string;
+  compilationSuccess: boolean;
+  compileDurationMs?: number;
+  errors?: Array<{ message: string; line?: number }>;
+  warnings?: Array<{ message: string; line?: number }>;
+  papersUsed: Array<{ title: string; year?: string }>;
+}
+
+export async function sendOneShotPaperRequest(params: {
+  topic: string;
+  hypothesis?: string;
+  venue?: string;
+  referencePapers?: any[];
+  model?: string;
+  apiKey?: string;
+  provider?: 'groq' | 'gemini';
+  signal?: AbortSignal;
+}): Promise<OneShotPaperResult> {
+  const { signal, ...body } = params;
+  const res = await fetch('/api/ai/one-shot-paper', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || 'One-shot manuscript generation failed');
+  }
+
+  return res.json();
+}

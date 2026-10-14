@@ -1,17 +1,27 @@
 import { create } from 'zustand';
-import type { CompilationState, CompileResponse, EngineStatus, LaTeXDiagnostic, VirtualFile } from '../types';
+import type {
+  CompilationState,
+  CompileResponse,
+  EngineStatus,
+  LaTeXDiagnostic,
+  ProjectMetadata,
+  VirtualFile,
+} from '../types';
 import { compileWorkspace, fetchEngineStatus, forwardSyncLookup, reverseSyncLookup } from '../services/api';
 import { TEMPLATES } from '../templates';
+import { importZipToProject } from '../services/zipImporter';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
 interface ProjectState {
+  currentProjectId: string;
+  projects: ProjectMetadata[];
   projectName: string;
   files: Record<string, VirtualFile>;
   activeFilePath: string;
   openTabs: string[];
   folders: string[];
-  
+
   // Compilation
   compilationState: CompilationState;
   buildId: string | null;
@@ -41,7 +51,7 @@ interface ProjectState {
   // Jump to line callback registered by Monaco
   jumpToLineFn: ((line: number, file?: string) => void) | null;
 
-  // Actions
+  // Core Actions
   setProjectName: (name: string) => void;
   setActiveFile: (path: string) => void;
   openTab: (path: string) => void;
@@ -70,25 +80,136 @@ interface ProjectState {
   reverseSyncToCode: (page: number, xPt: number, yPt: number, clickedText?: string) => Promise<void>;
   exportZip: () => Promise<void>;
   downloadPdf: () => void;
-  initProject: () => Promise<void>;
+
+  // Multi-Project Management Actions
+  initProject: (projectId?: string) => Promise<void>;
+  loadProject: (projectId: string) => Promise<void>;
+  createProject: (name: string, description?: string, templateId?: string) => string;
+  duplicateProject: (projectId: string) => string;
+  deleteProject: (projectId: string) => void;
+  toggleFavoriteProject: (projectId: string) => void;
+  importOverleafZip: (file: File) => Promise<string>;
+  refreshProjectsList: () => void;
 }
 
-const STORAGE_KEY = 'latexer_project_v1';
+const MANIFEST_KEY = 'latexer_projects_manifest_v2';
+const PROJECT_PREFIX = 'latexer_project_data_';
+const LEGACY_STORAGE_KEY = 'latexer_project_v1';
+
+export function getStoredManifest(): ProjectMetadata[] {
+  try {
+    const raw = localStorage.getItem(MANIFEST_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[VFS] Failed reading project manifest:', err);
+  }
+
+  // Seed default manifest
+  const now = new Date().toISOString();
+  const initialManifest: ProjectMetadata[] = [
+    {
+      id: 'default',
+      name: 'Academic Research Manuscript',
+      description: 'Main active LaTeX document with mathematical proofs, figures, and bibtex citations.',
+      createdAt: now,
+      lastModified: now,
+      filesCount: 2,
+      engine: 'Tectonic',
+      tags: ['Academic', 'Paper'],
+      isFavorite: true,
+    },
+    {
+      id: 'neurips-2026',
+      name: 'Diffusion Latents for PDE Acceleration',
+      description: 'NeurIPS 2026 conference paper template with two-column camera ready format.',
+      createdAt: now,
+      lastModified: now,
+      filesCount: 2,
+      engine: 'Tectonic',
+      tags: ['Machine Learning', 'Conference'],
+    },
+    {
+      id: 'phd-dissertation',
+      name: 'Departmental PhD Dissertation Draft',
+      description: 'Multi-chapter thesis with frontmatter, theorem environments, and appendices.',
+      createdAt: now,
+      lastModified: now,
+      filesCount: 1,
+      engine: 'pdflatex',
+      tags: ['Thesis', 'Dissertation'],
+    },
+    {
+      id: 'quantum-beamer',
+      name: 'Quantum State Tomography Presentation',
+      description: 'Modern conference slide deck with clean slide layouts, theorem blocks, and code formatting.',
+      createdAt: now,
+      lastModified: now,
+      filesCount: 1,
+      engine: 'Tectonic',
+      tags: ['Presentation', 'Slides'],
+    },
+  ];
+
+  try {
+    localStorage.setItem(MANIFEST_KEY, JSON.stringify(initialManifest));
+  } catch {
+    // ignore
+  }
+
+  return initialManifest;
+}
+
+export function saveStoredManifest(manifest: ProjectMetadata[]) {
+  try {
+    localStorage.setItem(MANIFEST_KEY, JSON.stringify(manifest));
+  } catch (err) {
+    console.warn('[VFS] Failed to persist project manifest:', err);
+  }
+}
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function persistProjectState(
+  projectId: string,
   data: {
     projectName: string;
     files: Record<string, VirtualFile>;
     activeFilePath: string;
     openTabs: string[];
     folders: string[];
+    selectedEngine?: string;
   },
   immediate = false
 ) {
   const doSave = () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(`${PROJECT_PREFIX}${projectId}`, JSON.stringify(data));
+
+      // Also update metadata in manifest
+      const manifest = getStoredManifest();
+      const existing = manifest.find((p) => p.id === projectId);
+      const now = new Date().toISOString();
+      if (existing) {
+        existing.name = data.projectName;
+        existing.lastModified = now;
+        existing.filesCount = Object.keys(data.files).length;
+        if (data.selectedEngine) existing.engine = data.selectedEngine;
+      } else {
+        manifest.unshift({
+          id: projectId,
+          name: data.projectName,
+          description: 'Custom research workspace',
+          createdAt: now,
+          lastModified: now,
+          filesCount: Object.keys(data.files).length,
+          engine: data.selectedEngine || 'Tectonic',
+        });
+      }
+      saveStoredManifest(manifest);
     } catch (err) {
       console.warn('[VFS] LocalStorage save failed or quota exceeded:', err);
     }
@@ -113,6 +234,8 @@ function getDefaultFiles(): Record<string, VirtualFile> {
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
+  currentProjectId: 'default',
+  projects: getStoredManifest(),
   projectName: 'Academic Research Manuscript',
   files: getDefaultFiles(),
   activeFilePath: 'main.tex',
@@ -143,16 +266,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   hostSetupModalOpen: false,
   jumpToLineFn: null,
 
+  refreshProjectsList: () => {
+    set({ projects: getStoredManifest() });
+  },
+
   setProjectName: (name) => {
     set((state) => {
-      persistProjectState({
-        projectName: name,
-        files: state.files,
-        activeFilePath: state.activeFilePath,
-        openTabs: state.openTabs,
-        folders: state.folders,
-      }, true);
-      return { projectName: name };
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: name,
+          files: state.files,
+          activeFilePath: state.activeFilePath,
+          openTabs: state.openTabs,
+          folders: state.folders,
+          selectedEngine: state.selectedEngine,
+        },
+        true
+      );
+      return { projectName: name, projects: getStoredManifest() };
     });
   },
 
@@ -202,13 +334,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => {
       if (state.folders.includes(cleanFolder)) return state;
       const nextFolders = [...state.folders, cleanFolder];
-      persistProjectState({
-        projectName: state.projectName,
-        files: state.files,
-        activeFilePath: state.activeFilePath,
-        openTabs: state.openTabs,
-        folders: nextFolders,
-      }, true);
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: state.projectName,
+          files: state.files,
+          activeFilePath: state.activeFilePath,
+          openTabs: state.openTabs,
+          folders: nextFolders,
+          selectedEngine: state.selectedEngine,
+        },
+        true
+      );
       return { folders: nextFolders };
     });
   },
@@ -228,13 +365,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (nextActive.startsWith(prefix)) {
         nextActive = nextTabs[0] || 'main.tex';
       }
-      persistProjectState({
-        projectName: state.projectName,
-        files: updatedFiles,
-        activeFilePath: nextActive,
-        openTabs: nextTabs.length > 0 ? nextTabs : ['main.tex'],
-        folders: updatedFolders,
-      }, true);
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: state.projectName,
+          files: updatedFiles,
+          activeFilePath: nextActive,
+          openTabs: nextTabs.length > 0 ? nextTabs : ['main.tex'],
+          folders: updatedFolders,
+          selectedEngine: state.selectedEngine,
+        },
+        true
+      );
       return {
         files: updatedFiles,
         folders: updatedFolders,
@@ -254,13 +396,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       };
 
       // Debounce saving to localStorage to eliminate typing latency (PERF-01)
-      persistProjectState({
-        projectName: state.projectName,
-        files: updatedFiles,
-        activeFilePath: state.activeFilePath,
-        openTabs: state.openTabs,
-        folders: state.folders,
-      }, false);
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: state.projectName,
+          files: updatedFiles,
+          activeFilePath: state.activeFilePath,
+          openTabs: state.openTabs,
+          folders: state.folders,
+          selectedEngine: state.selectedEngine,
+        },
+        false
+      );
 
       return { files: updatedFiles };
     });
@@ -282,13 +429,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
       const nextTabs = state.openTabs.includes(path) ? state.openTabs : [...state.openTabs, path];
 
-      persistProjectState({
-        projectName: state.projectName,
-        files: updatedFiles,
-        activeFilePath: path,
-        openTabs: nextTabs,
-        folders: updatedFolders,
-      }, true);
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: state.projectName,
+          files: updatedFiles,
+          activeFilePath: path,
+          openTabs: nextTabs,
+          folders: updatedFolders,
+          selectedEngine: state.selectedEngine,
+        },
+        true
+      );
 
       return {
         files: updatedFiles,
@@ -314,13 +466,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
       const finalTabs = nextTabs.length > 0 ? nextTabs : ['main.tex'];
 
-      persistProjectState({
-        projectName: state.projectName,
-        files: updated,
-        activeFilePath: nextActive,
-        openTabs: finalTabs,
-        folders: state.folders,
-      }, true);
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: state.projectName,
+          files: updated,
+          activeFilePath: nextActive,
+          openTabs: finalTabs,
+          folders: state.folders,
+          selectedEngine: state.selectedEngine,
+        },
+        true
+      );
 
       return {
         files: updated,
@@ -345,13 +502,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const nextTabs = state.openTabs.map((t) => (t === oldPath ? newPath : t));
       const nextActive = state.activeFilePath === oldPath ? newPath : state.activeFilePath;
 
-      persistProjectState({
-        projectName: state.projectName,
-        files: updated,
-        activeFilePath: nextActive,
-        openTabs: nextTabs,
-        folders: state.folders,
-      }, true);
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: state.projectName,
+          files: updated,
+          activeFilePath: nextActive,
+          openTabs: nextTabs,
+          folders: state.folders,
+          selectedEngine: state.selectedEngine,
+        },
+        true
+      );
 
       return {
         files: updated,
@@ -389,13 +551,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     template.files.forEach((f) => {
       newFiles[f.path] = { ...f };
     });
-    persistProjectState({
-      projectName: template.name,
-      files: newFiles,
-      activeFilePath: 'main.tex',
-      openTabs: ['main.tex'],
-      folders: [],
-    }, true);
+    persistProjectState(
+      get().currentProjectId,
+      {
+        projectName: template.name,
+        files: newFiles,
+        activeFilePath: 'main.tex',
+        openTabs: ['main.tex'],
+        folders: [],
+        selectedEngine: get().selectedEngine,
+      },
+      true
+    );
 
     set({
       projectName: template.name,
@@ -408,6 +575,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       errors: [],
       warnings: [],
       rawLog: '',
+      projects: getStoredManifest(),
     });
     // Trigger compilation on template load
     setTimeout(() => {
@@ -416,14 +584,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   compileNow: async () => {
-    const { files, selectedEngine, compilationState } = get();
+    const { files, selectedEngine, compilationState, activeFilePath } = get();
     if (compilationState === 'compiling') return;
 
     set({ compilationState: 'compiling' });
 
     try {
       const filesArray = Object.values(files);
-      const res: CompileResponse = await compileWorkspace(filesArray, 'main.tex', selectedEngine);
+      const rootFile = files['main.tex'] ? 'main.tex' : activeFilePath || 'main.tex';
+      const res: CompileResponse = await compileWorkspace(filesArray, rootFile, selectedEngine);
 
       set({
         compilationState: res.success ? 'success' : 'error',
@@ -454,7 +623,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  setSelectedEngine: (engine) => set({ selectedEngine: engine }),
+  setSelectedEngine: (engine) => {
+    set((state) => {
+      persistProjectState(
+        state.currentProjectId,
+        {
+          projectName: state.projectName,
+          files: state.files,
+          activeFilePath: state.activeFilePath,
+          openTabs: state.openTabs,
+          folders: state.folders,
+          selectedEngine: engine,
+        },
+        true
+      );
+      return { selectedEngine: engine, projects: getStoredManifest() };
+    });
+  },
 
   setAutoCompile: (enabled) => set({ autoCompile: enabled }),
 
@@ -595,7 +780,251 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  initProject: async () => {
+  // Multi-Project Store Implementation
+  createProject: (name: string, description?: string, templateId?: string) => {
+    const newId = 'proj_' + Date.now();
+    const now = new Date().toISOString();
+    let initialFiles = getDefaultFiles();
+    const folders: string[] = [];
+
+    if (templateId) {
+      const tpl = TEMPLATES.find((t) => t.id === templateId);
+      if (tpl) {
+        initialFiles = {};
+        tpl.files.forEach((f) => {
+          initialFiles[f.path] = { ...f };
+        });
+      }
+    }
+
+    const projectData = {
+      projectName: name,
+      files: initialFiles,
+      activeFilePath: 'main.tex',
+      openTabs: ['main.tex'],
+      folders,
+      selectedEngine: 'auto',
+    };
+
+    localStorage.setItem(`${PROJECT_PREFIX}${newId}`, JSON.stringify(projectData));
+
+    const manifest = getStoredManifest();
+    const newMeta: ProjectMetadata = {
+      id: newId,
+      name,
+      description: description || 'New LaTeX research manuscript',
+      createdAt: now,
+      lastModified: now,
+      filesCount: Object.keys(initialFiles).length,
+      engine: 'Tectonic',
+      tags: templateId ? [templateId] : ['Manuscript'],
+    };
+    manifest.unshift(newMeta);
+    saveStoredManifest(manifest);
+
+    set({ projects: manifest });
+    return newId;
+  },
+
+  duplicateProject: (projectId: string) => {
+    const manifest = getStoredManifest();
+    const srcMeta = manifest.find((p) => p.id === projectId);
+    const newId = 'proj_' + Date.now();
+    const now = new Date().toISOString();
+    const newName = srcMeta ? `${srcMeta.name} (Copy)` : 'Cloned Project';
+
+    const raw = localStorage.getItem(`${PROJECT_PREFIX}${projectId}`);
+    let data;
+    if (raw) {
+      data = JSON.parse(raw);
+      data.projectName = newName;
+    } else {
+      data = {
+        projectName: newName,
+        files: getDefaultFiles(),
+        activeFilePath: 'main.tex',
+        openTabs: ['main.tex'],
+        folders: [],
+        selectedEngine: 'auto',
+      };
+    }
+
+    localStorage.setItem(`${PROJECT_PREFIX}${newId}`, JSON.stringify(data));
+
+    const newMeta: ProjectMetadata = {
+      id: newId,
+      name: newName,
+      description: srcMeta?.description || 'Duplicated project workspace',
+      createdAt: now,
+      lastModified: now,
+      filesCount: Object.keys(data.files).length,
+      engine: srcMeta?.engine || 'Tectonic',
+      tags: srcMeta?.tags ? [...srcMeta.tags] : ['Copy'],
+    };
+    manifest.unshift(newMeta);
+    saveStoredManifest(manifest);
+
+    set({ projects: manifest });
+    return newId;
+  },
+
+  deleteProject: (projectId: string) => {
+    try {
+      localStorage.removeItem(`${PROJECT_PREFIX}${projectId}`);
+    } catch {}
+
+    const manifest = getStoredManifest().filter((p) => p.id !== projectId);
+    saveStoredManifest(manifest);
+    set({ projects: manifest });
+  },
+
+  toggleFavoriteProject: (projectId: string) => {
+    const manifest = getStoredManifest().map((p) => {
+      if (p.id === projectId) {
+        return { ...p, isFavorite: !p.isFavorite };
+      }
+      return p;
+    });
+    saveStoredManifest(manifest);
+    set({ projects: manifest });
+  },
+
+  importOverleafZip: async (file: File) => {
+    const unpacked = await importZipToProject(file);
+    const newId = 'proj_' + Date.now();
+    const now = new Date().toISOString();
+
+    const projectData = {
+      projectName: unpacked.projectName,
+      files: unpacked.files,
+      activeFilePath: unpacked.mainFile,
+      openTabs: [unpacked.mainFile],
+      folders: unpacked.folders,
+      selectedEngine: 'auto',
+    };
+
+    localStorage.setItem(`${PROJECT_PREFIX}${newId}`, JSON.stringify(projectData));
+
+    const manifest = getStoredManifest();
+    const newMeta: ProjectMetadata = {
+      id: newId,
+      name: unpacked.projectName,
+      description: `Imported from ${file.name} with ${Object.keys(unpacked.files).length} files.`,
+      createdAt: now,
+      lastModified: now,
+      filesCount: Object.keys(unpacked.files).length,
+      engine: 'Tectonic',
+      tags: ['Imported', 'Overleaf'],
+    };
+    manifest.unshift(newMeta);
+    saveStoredManifest(manifest);
+
+    set({ projects: manifest });
+    return newId;
+  },
+
+  loadProject: async (projectId: string) => {
+    const manifest = getStoredManifest();
+    let savedRaw = localStorage.getItem(`${PROJECT_PREFIX}${projectId}`);
+
+    // Migration from legacy single project store if loading default
+    if (!savedRaw && projectId === 'default') {
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy) {
+        savedRaw = legacy;
+        localStorage.setItem(`${PROJECT_PREFIX}default`, legacy);
+      }
+    }
+
+    let projectData: {
+      projectName: string;
+      files: Record<string, VirtualFile>;
+      activeFilePath: string;
+      openTabs: string[];
+      folders: string[];
+      selectedEngine?: string;
+    };
+
+    if (savedRaw) {
+      try {
+        projectData = JSON.parse(savedRaw);
+      } catch {
+        projectData = {
+          projectName: 'Academic Research Manuscript',
+          files: getDefaultFiles(),
+          activeFilePath: 'main.tex',
+          openTabs: ['main.tex'],
+          folders: [],
+        };
+      }
+    } else {
+      // If not found in localStorage, seed from known starter templates if matching ID
+      let initialFiles = getDefaultFiles();
+      let initialName = 'Academic Research Manuscript';
+      if (projectId === 'neurips-2026') {
+        const t = TEMPLATES.find((x) => x.id === 'academic') || TEMPLATES[0];
+        initialFiles = {};
+        t.files.forEach((f) => {
+          initialFiles[f.path] = { ...f };
+        });
+        initialName = 'Diffusion Latents for PDE Acceleration';
+      } else if (projectId === 'phd-dissertation') {
+        const t = TEMPLATES.find((x) => x.id === 'minimal') || TEMPLATES[0];
+        initialFiles = {};
+        t.files.forEach((f) => {
+          initialFiles[f.path] = { ...f };
+        });
+        initialName = 'Departmental PhD Dissertation Draft';
+      } else if (projectId === 'quantum-beamer') {
+        const t = TEMPLATES.find((x) => x.id === 'beamer') || TEMPLATES[0];
+        initialFiles = {};
+        t.files.forEach((f) => {
+          initialFiles[f.path] = { ...f };
+        });
+        initialName = 'Quantum State Tomography Presentation';
+      }
+
+      projectData = {
+        projectName: initialName,
+        files: initialFiles,
+        activeFilePath: 'main.tex',
+        openTabs: ['main.tex'],
+        folders: [],
+        selectedEngine: 'auto',
+      };
+      try {
+        localStorage.setItem(`${PROJECT_PREFIX}${projectId}`, JSON.stringify(projectData));
+      } catch {}
+    }
+
+    const activeFile = projectData.activeFilePath || 'main.tex';
+    const tabs =
+      Array.isArray(projectData.openTabs) && projectData.openTabs.length > 0
+        ? projectData.openTabs
+        : [activeFile];
+
+    set({
+      currentProjectId: projectId,
+      projectName: projectData.projectName || 'Research Manuscript',
+      files: projectData.files || getDefaultFiles(),
+      activeFilePath: activeFile,
+      openTabs: tabs.includes(activeFile) ? tabs : [...tabs, activeFile],
+      folders: Array.isArray(projectData.folders) ? projectData.folders : [],
+      selectedEngine: projectData.selectedEngine || 'auto',
+      projects: manifest,
+      pdfUrl: null,
+      errors: [],
+      warnings: [],
+      rawLog: '',
+    });
+
+    // Auto compile newly loaded project
+    setTimeout(() => {
+      get().compileNow();
+    }, 100);
+  },
+
+  initProject: async (targetProjectId?: string) => {
     try {
       const status = await fetchEngineStatus();
       set({ engineStatus: status });
@@ -607,28 +1036,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       console.warn('Backend engine status check failed:', err);
     }
 
-    // Try restoring saved local storage
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.files && Object.keys(parsed.files).length > 0) {
-          const activeFile = parsed.activeFilePath || 'main.tex';
-          const tabs = Array.isArray(parsed.openTabs) && parsed.openTabs.length > 0 ? parsed.openTabs : [activeFile];
-          set({
-            projectName: parsed.projectName || 'My LaTeX Project',
-            files: parsed.files,
-            activeFilePath: activeFile,
-            openTabs: tabs.includes(activeFile) ? tabs : [...tabs, activeFile],
-            folders: Array.isArray(parsed.folders) ? parsed.folders : [],
-          });
-        }
-      }
-    } catch {
-      // ignore
-    }
-
-    // Run initial compilation
-    get().compileNow();
+    const projectId = targetProjectId || get().currentProjectId || 'default';
+    await get().loadProject(projectId);
   },
 }));

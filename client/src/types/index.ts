@@ -50,3 +50,15 @@ export interface EngineStatus {
 }
 
 export type CompilationState = 'idle' | 'compiling' | 'success' | 'error';
+
+export interface ProjectMetadata {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  lastModified: string;
+  filesCount: number;
+  engine: string;
+  tags?: string[];
+  isFavorite?: boolean;
+}
