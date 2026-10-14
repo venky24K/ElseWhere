@@ -1,12 +1,14 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import zlib from 'zlib';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { CompileRequest, CompileResponse, EngineStatus, VirtualFile } from './types.js';
 import { parseLaTeXLog } from './logParser.js';
 import { generateStarterPdf } from './fallbackPdf.js';
+import { parseSyncTeX, SyncTeXData } from './synctex.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,8 +23,11 @@ const ADDITIONAL_PATHS = [
 ];
 const ENHANCED_PATH = `${ADDITIONAL_PATHS.join(':')}:${process.env.PATH || ''}`;
 
-// Cache of compiled PDFs in memory for fast serving
-export const pdfCache = new Map<string, { buffer: Buffer; filename: string; createdAt: number }>();
+// Cache of compiled PDFs and synctex in memory for fast serving & bidirectional jump
+export const pdfCache = new Map<
+  string,
+  { buffer: Buffer; filename: string; createdAt: number; synctex?: SyncTeXData }
+>();
 
 // Periodic cleanup of PDF cache older than 1 hour
 setInterval(() => {
@@ -136,11 +141,11 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     let args: string[] = [];
 
     if (selectedEngine === 'tectonic') {
-      args = ['--bundle', 'https://data1b.fullyjustified.net/tlextras-2022.0r0.tar', '-o', '.', '--keep-logs', mainFile];
+      args = ['--bundle', 'https://data1b.fullyjustified.net/tlextras-2022.0r0.tar', '-o', '.', '--keep-logs', '--synctex', mainFile];
     } else if (selectedEngine === 'latexmk') {
-      args = ['-pdf', '-interaction=nonstopmode', '-file-line-error', mainFile];
+      args = ['-pdf', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
     } else if (selectedEngine === 'pdflatex' || selectedEngine === 'xelatex') {
-      args = ['-interaction=nonstopmode', '-file-line-error', mainFile];
+      args = ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
     }
 
     let stdout = '';
@@ -194,7 +199,7 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     // If initial engine failed to produce PDF, attempt graceful fallback to pdflatex
     if (!success && selectedEngine !== 'pdflatex' && engineStatus.availableEngines.pdflatex) {
       try {
-        const fallbackRes = await execFileAsync('pdflatex', ['-interaction=nonstopmode', '-file-line-error', mainFile], {
+        const fallbackRes = await execFileAsync('pdflatex', ['-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile], {
           cwd: buildDir,
           timeout: 120000,
           env: { ...process.env, PATH: ENHANCED_PATH },
@@ -215,11 +220,33 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
       }
     }
 
+    // 7. Parse SyncTeX data if generated for forward/reverse synchronization
+    let synctexData: SyncTeXData | undefined = undefined;
+    const synctexGzPath = path.join(buildDir, `${baseName}.synctex.gz`);
+    const synctexPlainPath = path.join(buildDir, `${baseName}.synctex`);
+
+    try {
+      const hasGz = await fs.stat(synctexGzPath).then(() => true).catch(() => false);
+      const hasPlain = !hasGz && await fs.stat(synctexPlainPath).then(() => true).catch(() => false);
+
+      if (hasGz) {
+        const gzBuffer = await fs.readFile(synctexGzPath);
+        const uncompressed = zlib.gunzipSync(gzBuffer).toString('utf-8');
+        synctexData = parseSyncTeX(uncompressed, buildDir);
+      } else if (hasPlain) {
+        const plainText = await fs.readFile(synctexPlainPath, 'utf-8');
+        synctexData = parseSyncTeX(plainText, buildDir);
+      }
+    } catch (synctexErr: any) {
+      console.warn('SyncTeX parsing warning:', synctexErr?.message || synctexErr);
+    }
+
     if (pdfBuffer && pdfBuffer.length > 0) {
       pdfCache.set(buildId, {
         buffer: pdfBuffer,
         filename: `${baseName}.pdf`,
         createdAt: Date.now(),
+        synctex: synctexData,
       });
     }
 
@@ -229,6 +256,7 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
       success,
       buildId,
       pdfUrl: success ? `/api/pdf/${buildId}` : undefined,
+      hasSyncTex: Boolean(synctexData && synctexData.records.length > 0),
       errors,
       warnings,
       rawLog,

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
 import { compileWorkspace, detectEngines, pdfCache } from './compiler.js';
+import { forwardSync, reverseSync } from './synctex.js';
 import { CompileRequest } from './types.js';
 import {
   dispatchAiChat,
@@ -78,6 +79,62 @@ app.get('/api/pdf/:buildId', (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `${dispositionType}; filename="${filename}"`);
   res.send(cached.buffer);
+});
+
+// SyncTeX Bidirectional Synchronization Endpoints
+// Forward Sync: (file, line) -> (page, xPt, yPt)
+app.get('/api/synctex/forward', (req, res) => {
+  const buildId = req.query.buildId as string;
+  const file = req.query.file as string;
+  const line = parseInt(req.query.line as string, 10);
+
+  if (!buildId || !file || isNaN(line)) {
+    return res.status(400).json({ error: 'Missing required query parameters: buildId, file, line' });
+  }
+
+  const cached = pdfCache.get(buildId);
+  if (!cached) {
+    return res.status(404).json({ error: 'Build expired or not found' });
+  }
+
+  if (!cached.synctex) {
+    return res.status(404).json({ error: 'SyncTeX data not available for this build' });
+  }
+
+  const result = forwardSync(cached.synctex, file, line);
+  if (!result) {
+    return res.status(404).json({ error: 'No matching PDF coordinates found for given line' });
+  }
+
+  res.json({ success: true, ...result });
+});
+
+// Reverse Sync: (page, xPt, yPt) -> (file, line)
+app.get('/api/synctex/reverse', (req, res) => {
+  const buildId = req.query.buildId as string;
+  const page = parseInt(req.query.page as string, 10);
+  const xPt = parseFloat(req.query.xPt as string);
+  const yPt = parseFloat(req.query.yPt as string);
+
+  if (!buildId || isNaN(page) || isNaN(xPt) || isNaN(yPt)) {
+    return res.status(400).json({ error: 'Missing required query parameters: buildId, page, xPt, yPt' });
+  }
+
+  const cached = pdfCache.get(buildId);
+  if (!cached) {
+    return res.status(404).json({ error: 'Build expired or not found' });
+  }
+
+  if (!cached.synctex) {
+    return res.status(404).json({ error: 'SyncTeX data not available for this build' });
+  }
+
+  const result = reverseSync(cached.synctex, page, xPt, yPt);
+  if (!result) {
+    return res.status(404).json({ error: 'No matching source code found for given coordinate' });
+  }
+
+  res.json({ success: true, ...result });
 });
 
 // AI Endpoints (Groq & Gemini)

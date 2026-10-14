@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { CompilationState, CompileResponse, EngineStatus, LaTeXDiagnostic, VirtualFile } from '../types';
-import { compileWorkspace, fetchEngineStatus } from '../services/api';
+import { compileWorkspace, fetchEngineStatus, forwardSyncLookup, reverseSyncLookup } from '../services/api';
 import { TEMPLATES } from '../templates';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -14,7 +14,9 @@ interface ProjectState {
   
   // Compilation
   compilationState: CompilationState;
+  buildId: string | null;
   pdfUrl: string | null;
+  hasSyncTex: boolean;
   compileDuration: number | null;
   errors: LaTeXDiagnostic[];
   warnings: LaTeXDiagnostic[];
@@ -22,6 +24,12 @@ interface ProjectState {
   engineUsed: string;
   selectedEngine: string;
   autoCompile: boolean;
+
+  // SyncTeX Bidirectional Synchronization
+  syncScrollEnabled: boolean;
+  syncHighlight: { page: number; yPt: number; xPt?: number; id: number } | null;
+  lastSyncSource: 'editor' | 'pdf' | null;
+  syncToPdfFn: ((page: number, yPt: number, xPt?: number, word?: string) => void) | null;
 
   // UI state
   logsDrawerOpen: boolean;
@@ -50,12 +58,16 @@ interface ProjectState {
   compileNow: () => Promise<void>;
   setSelectedEngine: (engine: string) => void;
   setAutoCompile: (enabled: boolean) => void;
+  setSyncScrollEnabled: (enabled: boolean) => void;
   toggleLogsDrawer: (open?: boolean) => void;
   setLogsActiveTab: (tab: 'diagnostics' | 'raw') => void;
   setTemplateModalOpen: (open: boolean) => void;
   setHostSetupModalOpen: (open: boolean) => void;
   registerJumpToLine: (fn: (line: number, file?: string) => void) => void;
   jumpToLine: (line: number, file?: string) => void;
+  registerSyncToPdf: (fn: (page: number, yPt: number, xPt?: number, word?: string) => void) => void;
+  forwardSyncToPdf: (file: string, line: number, column?: number, word?: string) => Promise<void>;
+  reverseSyncToCode: (page: number, xPt: number, yPt: number, clickedText?: string) => Promise<void>;
   exportZip: () => Promise<void>;
   downloadPdf: () => void;
   initProject: () => Promise<void>;
@@ -80,7 +92,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   folders: [],
 
   compilationState: 'idle',
+  buildId: null,
   pdfUrl: null,
+  hasSyncTex: false,
   compileDuration: null,
   errors: [],
   warnings: [],
@@ -88,6 +102,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   engineUsed: '',
   selectedEngine: 'auto',
   autoCompile: false,
+
+  syncScrollEnabled: true,
+  syncHighlight: null,
+  lastSyncSource: null,
+  syncToPdfFn: null,
 
   logsDrawerOpen: false,
   logsActiveTab: 'diagnostics',
@@ -318,7 +337,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       set({
         compilationState: res.success ? 'success' : 'error',
+        buildId: res.buildId || null,
         pdfUrl: res.pdfUrl || null,
+        hasSyncTex: Boolean(res.hasSyncTex),
         compileDuration: res.durationMs,
         errors: res.errors || [],
         warnings: res.warnings || [],
@@ -347,6 +368,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setAutoCompile: (enabled) => set({ autoCompile: enabled }),
 
+  setSyncScrollEnabled: (enabled) => set({ syncScrollEnabled: enabled }),
+
   toggleLogsDrawer: (open) =>
     set((state) => ({ logsDrawerOpen: open !== undefined ? open : !state.logsDrawerOpen })),
 
@@ -365,6 +388,78 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const fn = get().jumpToLineFn;
     if (fn) {
       fn(line, file);
+    }
+  },
+
+  registerSyncToPdf: (fn) => set({ syncToPdfFn: fn }),
+
+  forwardSyncToPdf: async (file: string, line: number, _column?: number, word?: string) => {
+    const { syncScrollEnabled, buildId, syncToPdfFn, files, activeFilePath } = get();
+    if (!syncScrollEnabled) return;
+
+    // 1. If backend buildId is available, perform SyncTeX forward lookup
+    if (buildId) {
+      const res = await forwardSyncLookup(buildId, file, line);
+      if (res && res.page > 0) {
+        set({
+          syncHighlight: { page: res.page, yPt: res.yPt, xPt: res.xPt, id: Date.now() },
+          lastSyncSource: 'editor',
+        });
+        if (syncToPdfFn) {
+          syncToPdfFn(res.page, res.yPt, res.xPt, word);
+        }
+        return;
+      }
+    }
+
+    // 2. Intelligent approximation fallback if SyncTeX data isn't ready
+    const targetFile = files[file] || files[activeFilePath];
+    if (targetFile && targetFile.content && syncToPdfFn) {
+      const totalLines = targetFile.content.split('\n').length;
+      if (totalLines > 0) {
+        const approxRatio = Math.min(1, Math.max(0, line / totalLines));
+        syncToPdfFn(1, approxRatio * 792, undefined, word);
+      }
+    }
+  },
+
+  reverseSyncToCode: async (page: number, xPt: number, yPt: number, clickedText?: string) => {
+    const { syncScrollEnabled, buildId, jumpToLine, files, activeFilePath } = get();
+    if (!syncScrollEnabled) return;
+
+    // 1. Try SyncTeX reverse lookup
+    if (buildId) {
+      const res = await reverseSyncLookup(buildId, page, xPt, yPt);
+      if (res && res.file && res.line > 0) {
+        set({ lastSyncSource: 'pdf' });
+        jumpToLine(res.line, res.file);
+        return;
+      }
+    }
+
+    // 2. Text-matching fallback: search for words in clicked paragraph
+    if (clickedText && clickedText.length >= 4) {
+      const searchTarget = clickedText.slice(0, 40).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim();
+      const words = searchTarget.split(/\s+/).filter((w) => w.length > 3);
+
+      const candidates = [
+        activeFilePath,
+        ...Object.keys(files).filter((p) => p !== activeFilePath && p.endsWith('.tex')),
+      ];
+      for (const filePath of candidates) {
+        const file = files[filePath];
+        if (!file || !file.content) continue;
+        const lines = file.content.split('\n');
+
+        for (let i = 0; i < lines.length; i++) {
+          const lineLower = lines[i].toLowerCase();
+          if (words.length > 0 && words.every((w) => lineLower.includes(w))) {
+            set({ lastSyncSource: 'pdf' });
+            jumpToLine(i + 1, filePath);
+            return;
+          }
+        }
+      }
     }
   },
 

@@ -22,6 +22,7 @@ export interface CompileResponse {
   success: boolean;
   buildId: string;
   pdfUrl?: string;
+  hasSyncTex?: boolean;
   errors: LaTeXDiagnostic[];
   warnings: LaTeXDiagnostic[];
   rawLog: string;

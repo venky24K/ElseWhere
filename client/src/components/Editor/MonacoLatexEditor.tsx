@@ -95,6 +95,7 @@ export const MonacoLatexEditor: React.FC = () => {
     compileNow,
     autoCompile,
     registerJumpToLine,
+    forwardSyncToPdf,
   } = useProjectStore();
 
   const { openInlineCommand, registerEditorActions } = useAiStore();
@@ -332,9 +333,29 @@ export const MonacoLatexEditor: React.FC = () => {
 
   const jumpToLine = (line: number) => {
     const editor = editorRef.current;
+    const monaco = monacoRef.current;
     if (!editor || !editor.getModel()) return;
     editor.revealLineInCenter(line);
     editor.setPosition({ lineNumber: line, column: 1 });
+
+    if (monaco) {
+      const decos = editor.deltaDecorations([], [
+        {
+          range: new monaco.Range(line, 1, line, 1),
+          options: {
+            isWholeLine: true,
+            className: 'synctex-highlight-editor-line',
+          },
+        },
+      ]);
+      setTimeout(() => {
+        try {
+          editor.deltaDecorations(decos, []);
+        } catch {
+          // ignore if model switched
+        }
+      }, 1800);
+    }
   };
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
@@ -456,6 +477,72 @@ export const MonacoLatexEditor: React.FC = () => {
       jumpToLine(line);
       editor.focus();
     });
+
+    const extractWord = (pos: any): string | undefined => {
+      const model = editor.getModel();
+      if (!model || !pos?.lineNumber || !pos?.column) return undefined;
+      const wordObj = model.getWordAtPosition(pos);
+      if (wordObj?.word) return wordObj.word;
+      try {
+        const lineContent = model.getLineContent(pos.lineNumber);
+        if (!lineContent) return undefined;
+        let col = Math.max(0, pos.column - 1);
+        if (col > 0 && !/[\w]/.test(lineContent[col]) && /[\w]/.test(lineContent[col - 1])) {
+          col = col - 1;
+        }
+        if (/[\w]/.test(lineContent[col])) {
+          let s = col;
+          let e = col;
+          while (s > 0 && /[\w]/.test(lineContent[s - 1])) s--;
+          while (e < lineContent.length && /[\w]/.test(lineContent[e])) e++;
+          const w = lineContent.slice(s, e).trim();
+          if (w) return w;
+        }
+      } catch {
+        // ignore
+      }
+      return undefined;
+    };
+
+    // Forward SyncTeX: On click or cursor movement in editor, scroll PDF to matching word/section
+    track(
+      editor.onMouseDown((e: any) => {
+        if (e.target?.position?.lineNumber) {
+          const pos = e.target.position;
+          const word = extractWord(pos);
+          forwardSyncToPdf(pathRef.current, pos.lineNumber, pos.column, word);
+        }
+      })
+    );
+
+    let cursorSyncDebounce: any = null;
+    track(
+      editor.onDidChangeCursorPosition((e: any) => {
+        if (cursorSyncDebounce) clearTimeout(cursorSyncDebounce);
+        cursorSyncDebounce = setTimeout(() => {
+          const pos = e.position;
+          const word = extractWord(pos);
+          forwardSyncToPdf(pathRef.current, pos.lineNumber, pos.column, word);
+        }, 300);
+      })
+    );
+
+    let selectionSyncDebounce: any = null;
+    track(
+      editor.onDidChangeCursorSelection((e: any) => {
+        const selection = e.selection;
+        if (!selection || selection.isEmpty()) return;
+        const model = editor.getModel();
+        if (!model) return;
+        const selectedText = model.getValueInRange(selection)?.trim();
+        if (selectedText && selectedText.length > 0 && selectedText.length < 60) {
+          if (selectionSyncDebounce) clearTimeout(selectionSyncDebounce);
+          selectionSyncDebounce = setTimeout(() => {
+            forwardSyncToPdf(pathRef.current, selection.startLineNumber, selection.startColumn, selectedText);
+          }, 200);
+        }
+      })
+    );
 
     // Register AI Detection Fix commands (only once globally for monaco editor)
     if (!(monaco.editor as any)._elsewhereAiCommandsRegistered) {

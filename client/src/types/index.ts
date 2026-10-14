@@ -16,11 +16,25 @@ export interface CompileResponse {
   success: boolean;
   buildId: string;
   pdfUrl?: string;
+  hasSyncTex?: boolean;
   errors: LaTeXDiagnostic[];
   warnings: LaTeXDiagnostic[];
   rawLog: string;
   engineUsed: string;
   durationMs: number;
+}
+
+export interface ForwardSyncResult {
+  success: boolean;
+  page: number;
+  xPt: number;
+  yPt: number;
+}
+
+export interface ReverseSyncResult {
+  success: boolean;
+  file: string;
+  line: number;
 }
 
 export interface EngineStatus {

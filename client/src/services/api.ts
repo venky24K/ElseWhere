@@ -31,3 +31,36 @@ export async function compileWorkspace(
 
   return res.json();
 }
+
+export async function forwardSyncLookup(
+  buildId: string,
+  file: string,
+  line: number
+): Promise<{ page: number; xPt: number; yPt: number } | null> {
+  try {
+    const url = `/api/synctex/forward?buildId=${encodeURIComponent(buildId)}&file=${encodeURIComponent(file)}&line=${encodeURIComponent(line)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.success ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function reverseSyncLookup(
+  buildId: string,
+  page: number,
+  xPt: number,
+  yPt: number
+): Promise<{ file: string; line: number } | null> {
+  try {
+    const url = `/api/synctex/reverse?buildId=${encodeURIComponent(buildId)}&page=${encodeURIComponent(page)}&xPt=${encodeURIComponent(xPt)}&yPt=${encodeURIComponent(yPt)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.success ? data : null;
+  } catch {
+    return null;
+  }
+}

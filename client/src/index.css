@@ -66,7 +66,9 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   margin: 0;
@@ -175,7 +177,7 @@ html, body, #root {
   line-height: 1.5;
 }
 
-.ai-markdown-content li > p {
+.ai-markdown-content li>p {
   margin: 0;
 }
 
@@ -188,9 +190,17 @@ html, body, #root {
   color: inherit;
 }
 
-.ai-markdown-content h1 { font-size: 15px; }
-.ai-markdown-content h2 { font-size: 14px; }
-.ai-markdown-content h3 { font-size: 13px; }
+.ai-markdown-content h1 {
+  font-size: 15px;
+}
+
+.ai-markdown-content h2 {
+  font-size: 14px;
+}
+
+.ai-markdown-content h3 {
+  font-size: 13px;
+}
 
 .ai-markdown-content blockquote {
   border-left: 3px solid var(--color-accent-purple);
@@ -226,6 +236,7 @@ html, body, #root {
     opacity: 0;
     transform: translateY(-4px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -233,10 +244,13 @@ html, body, #root {
 }
 
 @keyframes pulseGlow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
+
   50% {
     opacity: 0.85;
     transform: scale(1.01);
@@ -274,9 +288,17 @@ html, body, #root {
 
 /* Text highlight: painted as one rectangle behind the whole sentence,
    so it stays continuous across tokens and wrapped lines. No borders or radius. */
-.monaco-editor .ai-bg-ai     { background: rgba(244, 63, 94, 0.12); }
-.monaco-editor .ai-bg-mixed  { background: rgba(245, 158, 11, 0.12); }
-.monaco-editor .ai-bg-active { background: rgba(99, 102, 241, 0.20); }
+.monaco-editor .ai-bg-ai {
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.monaco-editor .ai-bg-mixed {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.monaco-editor .ai-bg-active {
+  background: rgba(99, 102, 241, 0.20);
+}
 
 /* Gutter bar: one 3px column, full line height, so adjacent lines join into
    a single unbroken line. Needs lineDecorationsWidth >= 8 (set in the component). */
@@ -285,6 +307,45 @@ html, body, #root {
   margin-left: 3px;
   border-radius: 0;
 }
-.monaco-editor .ai-gutter-ai    { background: #f43f5e; }
-.monaco-editor .ai-gutter-mixed { background: #f59e0b; }
-.monaco-editor .ai-gutter-human { background: #10b981; opacity: 0.6; }
+
+.monaco-editor .ai-gutter-ai {
+  background: #f43f5e;
+}
+
+.monaco-editor .ai-gutter-mixed {
+  background: #f59e0b;
+}
+
+.monaco-editor .ai-gutter-human {
+  background: #10b981;
+  opacity: 0.6;
+}
+
+/* SyncTeX Editor & PDF bidirectional highlight styles */
+.monaco-editor .synctex-highlight-editor-line {
+  background: rgba(96, 85, 232, 0.22) !important;
+  border-left: 3.5px solid #6055E8 !important;
+  transition: background 0.3s ease;
+}
+
+@keyframes synctexBlockFade {
+  0% {
+    opacity: 0;
+  }
+
+  8% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.synctex-pdf-indicator {
+  animation: synctexBlockFade 2.4s ease-out forwards;
+}
