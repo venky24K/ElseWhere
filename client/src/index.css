@@ -1,19 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500;1,6..72,600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 @import "tailwindcss";
 
 body {
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Editorial display font for high-impact titles */
+/* Editorial display font for high-impact scientific titles */
 .font-display {
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: 'Newsreader', 'Fraunces', Georgia, 'Times New Roman', serif;
   font-optical-sizing: auto;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
 }
 
 @theme {
-  --font-display: 'Fraunces', Georgia, serif;
+  --font-display: 'Newsreader', 'Fraunces', Georgia, 'Times New Roman', serif;
   --color-brand: #6055E8;
   --color-brand-hover: #4F43D6;
   --color-app: #F6F7FB;
@@ -391,4 +391,112 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--color-border-subtle);
+}
+
+/* ─── Public page enhancements ─── */
+
+/* Soft gradient backgrounds for sections */
+.bg-hero-gradient {
+  background: linear-gradient(
+    168deg,
+    #F8F7FF 0%,
+    #F0EEFF 18%,
+    #F6F7FB 40%,
+    #EEF4FF 65%,
+    #F5F0FF 100%
+  );
+}
+
+.bg-section-lavender {
+  background: linear-gradient(135deg, #FAFAFF 0%, #F3F0FF 50%, #F0F4FF 100%);
+}
+
+.bg-section-sky {
+  background: linear-gradient(135deg, #F8FAFF 0%, #EEF4FF 50%, #F5F0FF 100%);
+}
+
+.bg-footer-gradient {
+  background: linear-gradient(180deg, #F6F5FF 0%, #F0EEFF 40%, #EDEAFF 100%);
+}
+
+/* Gentle float for hero preview card */
+@keyframes gentleFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+.animate-float {
+  animation: gentleFloat 5s ease-in-out infinite;
+}
+
+/* Subtle shimmer on badges and accents */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.animate-shimmer {
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+}
+
+/* Staggered entrance for cards */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Accent left-bar for workflow cards */
+.accent-bar-left {
+  position: relative;
+}
+.accent-bar-left::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 12px; bottom: 12px;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--color-brand), #818CF8);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.accent-bar-left:hover::before {
+  opacity: 1;
+}
+
+/* Soft glow ring for CTA buttons */
+.btn-glow {
+  position: relative;
+}
+.btn-glow::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(96, 85, 232, 0.25), rgba(129, 140, 248, 0.15));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+}
+.btn-glow:hover::after {
+  opacity: 1;
+}
+
+/* Nav link underline reveal */
+.nav-underline {
+  position: relative;
+}
+.nav-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -2px; left: 50%; right: 50%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-brand);
+  transition: left 0.25s ease, right 0.25s ease;
+}
+.nav-underline:hover::after,
+.nav-underline.active::after {
+  left: 0; right: 0;
 }
