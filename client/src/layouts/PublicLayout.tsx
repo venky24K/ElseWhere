@@ -1,7 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
-  FileText,
-  Sparkles,
   ArrowRight,
   BookOpen,
   LayoutTemplate,
@@ -10,7 +8,6 @@ import {
   FolderKanban,
   CheckCircle2,
   ExternalLink,
-  ChevronRight,
 } from 'lucide-react';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -28,28 +25,17 @@ export function PublicLayout() {
 
   return (
     <div className="flex flex-col min-h-screen w-full bg-app text-text-primary selection:bg-brand/20 selection:text-brand font-sans">
-      {/* Top Banner Announcement */}
-      <div className="bg-gradient-to-r from-brand/90 via-purple-600 to-indigo-700 text-white text-xs py-1.5 px-4 text-center font-medium flex items-center justify-center gap-2 shadow-sm shrink-0">
-        <Sparkles size={13} className="text-amber-300 animate-pulse" />
-        <span>
-          <strong>ElseWhere v1.0 Launch:</strong> Zero cloud compile queues, local-first speed, and managed AI tokens now live!
-        </span>
-        <Link
-          to="/project/default"
-          className="ml-2 underline underline-offset-2 hover:text-white/90 text-white font-semibold inline-flex items-center gap-0.5"
-        >
-          Try Demo Studio <ChevronRight size={12} />
-        </Link>
-      </div>
 
       {/* Main Public Navigation Bar */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-sidebar/85 border-b border-border-subtle transition-all duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo & Brand */}
           <Link to="/" className="flex items-center gap-2.5 group cursor-pointer no-underline">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand via-purple-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-brand/20 group-hover:scale-105 transition-transform">
-              <FileText size={18} className="stroke-[2.2]" />
-            </div>
+            <img
+              src="/logo.svg"
+              alt="ElseWhere Logo"
+              className="w-8 h-8 rounded-lg shadow-sm shadow-brand/20 group-hover:scale-105 transition-transform object-contain"
+            />
             <div className="flex flex-col">
               <span className="text-base font-bold tracking-tight text-text-primary group-hover:text-brand transition-colors flex items-center gap-1.5">
                 ElseWhere
@@ -69,11 +55,10 @@ export function PublicLayout() {
                 <Link
                   key={link.path}
                   to={link.path}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 no-underline ${
-                    isActive
-                      ? 'bg-brand/10 text-brand font-semibold shadow-xs'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-card-hover'
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 no-underline ${isActive
+                    ? 'bg-brand/10 text-brand font-semibold shadow-xs'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-card-hover'
+                    }`}
                 >
                   {link.icon}
                   {link.label}
@@ -96,7 +81,6 @@ export function PublicLayout() {
               to="/project/default"
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-md bg-brand hover:bg-brand-hover text-white shadow-sm shadow-brand/25 hover:shadow-brand/40 transition-all no-underline group"
             >
-              <span>Launch Studio</span>
               <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
             </Link>
           </div>
@@ -114,9 +98,11 @@ export function PublicLayout() {
           {/* Brand Column */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded bg-brand flex items-center justify-center text-white">
-                <FileText size={14} />
-              </div>
+              <img
+                src="/logo.svg"
+                alt="ElseWhere Logo"
+                className="w-6 h-6 rounded object-contain"
+              />
               <span className="font-bold text-sm tracking-tight text-text-primary">ElseWhere</span>
             </div>
             <p className="text-xs text-text-secondary leading-relaxed">
