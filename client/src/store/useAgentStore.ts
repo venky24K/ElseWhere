@@ -176,11 +176,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       activeFile,
       files: fileList,
       engine: 'tectonic',
+      workspacePapers: projectStore.workspacePapers,
     });
 
     const userPrompt = formatUserGoalMessage(trimmedGoal, {
       activeFile,
       files: fileList,
+      workspacePapers: projectStore.workspacePapers,
     });
 
     const controller = new AbortController();

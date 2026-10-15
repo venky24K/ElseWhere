@@ -51,6 +51,31 @@ export interface EngineStatus {
 
 export type CompilationState = 'idle' | 'compiling' | 'success' | 'error';
 
+export interface WorkspacePaperSummary {
+  contributions: string[];
+  methodology: string;
+  datasetsAndResults: string;
+  limitations: string;
+}
+
+export interface WorkspacePaper {
+  id: string;
+  title: string;
+  authors: string;
+  year: string;
+  venue?: string;
+  abstract: string;
+  fullText?: string;
+  doi?: string;
+  arxivId?: string;
+  url?: string;
+  bibtexKey: string;
+  bibtex: string;
+  summary?: WorkspacePaperSummary;
+  isAnalyzing?: boolean;
+  addedAt: string;
+}
+
 export interface ProjectMetadata {
   id: string;
   name: string;
@@ -64,4 +89,6 @@ export interface ProjectMetadata {
   isArchived?: boolean;
   isTrash?: boolean;
   owner?: string;
+  papersCount?: number;
 }
+

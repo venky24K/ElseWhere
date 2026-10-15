@@ -23,6 +23,8 @@ import {
   MessageSquare,
   ListOrdered,
   Sparkles,
+  BookOpen,
+  FileText,
 } from 'lucide-react';
 
 /** Helper to provide color-coded file extension badges */
@@ -300,6 +302,8 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
     insertAtCursor,
     setOneShotModalOpen,
     setVisionStudioModalOpen,
+    draftPrompt,
+    setDraftPrompt,
   } = useAiStore();
 
   // Agent Store
@@ -321,11 +325,12 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
     rejectAllEdits,
   } = useAgentStore();
 
-  const { files, activeFilePath, setActiveFile } = useProjectStore();
+  const { files, activeFilePath, setActiveFile, workspacePapers = [] } = useProjectStore();
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [agentGoalInput, setAgentGoalInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showMentionMenu, setShowMentionMenu] = useState<'chat' | 'agent' | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const agentEndRef = useRef<HTMLDivElement>(null);
@@ -349,6 +354,88 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
     }
   }, [chatMessages, isChatLoading, agentLogs, isAgentRunning, activeMode]);
 
+  // Handle draftPrompt dispatched from ReferencePapersView
+  useEffect(() => {
+    if (draftPrompt) {
+      if (activeMode === 'chat') {
+        setInputPrompt(draftPrompt);
+        setTimeout(() => {
+          chatTextareaRef.current?.focus();
+          autoResize(chatTextareaRef.current);
+        }, 50);
+      } else {
+        setAgentGoalInput(draftPrompt);
+        setTimeout(() => {
+          agentTextareaRef.current?.focus();
+          autoResize(agentTextareaRef.current);
+        }, 50);
+      }
+      setDraftPrompt('');
+    }
+  }, [draftPrompt, activeMode, setDraftPrompt]);
+
+  const handleInsertPapersMention = (mode: 'chat' | 'agent') => {
+    if (mode === 'chat') {
+      const current = inputPrompt;
+      const next = current.includes('@papers') ? current : `@papers ${current}`.trimStart();
+      setInputPrompt(next);
+      setTimeout(() => {
+        chatTextareaRef.current?.focus();
+        autoResize(chatTextareaRef.current);
+      }, 50);
+    } else {
+      const current = agentGoalInput;
+      const next = current.includes('@papers') ? current : `@papers ${current}`.trimStart();
+      setAgentGoalInput(next);
+      setTimeout(() => {
+        agentTextareaRef.current?.focus();
+        autoResize(agentTextareaRef.current);
+      }, 50);
+    }
+  };
+
+  const handleInputChange = (val: string, mode: 'chat' | 'agent') => {
+    if (mode === 'chat') {
+      setInputPrompt(val);
+      autoResize(chatTextareaRef.current);
+    } else {
+      setAgentGoalInput(val);
+      autoResize(agentTextareaRef.current);
+    }
+
+    if (/(?:^|\s)@\w*$/.test(val)) {
+      setShowMentionMenu(mode);
+    } else {
+      setShowMentionMenu(null);
+    }
+  };
+
+  const handleSelectMention = (tag: string, mode: 'chat' | 'agent') => {
+    if (mode === 'chat') {
+      const updated = inputPrompt.replace(/(?:^|\s)@\w*$/, (match) => {
+        const prefix = match.startsWith(' ') ? ' ' : '';
+        return `${prefix}${tag} `;
+      });
+      setInputPrompt(updated);
+      setShowMentionMenu(null);
+      setTimeout(() => {
+        chatTextareaRef.current?.focus();
+        autoResize(chatTextareaRef.current);
+      }, 50);
+    } else {
+      const updated = agentGoalInput.replace(/(?:^|\s)@\w*$/, (match) => {
+        const prefix = match.startsWith(' ') ? ' ' : '';
+        return `${prefix}${tag} `;
+      });
+      setAgentGoalInput(updated);
+      setShowMentionMenu(null);
+      setTimeout(() => {
+        agentTextareaRef.current?.focus();
+        autoResize(agentTextareaRef.current);
+      }, 50);
+    }
+  };
+
   // Copilot Chat Handlers
   const handleChatSend = () => {
     const trimmed = inputPrompt.trim();
@@ -357,6 +444,7 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
     const docContext = activeFile ? activeFile.content : undefined;
     sendChatMessage(trimmed, docContext);
     setInputPrompt('');
+    setShowMentionMenu(null);
     if (chatTextareaRef.current) {
       chatTextareaRef.current.style.height = 'auto';
     }
@@ -404,6 +492,8 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
 
   // Quick Action Prompts for Chat
   const quickChips = [
+    { label: '📚 Query @papers', prompt: '@papers summarize the key contributions, methodologies, and limitations across the attached papers.' },
+    { label: '✍️ Related Work (@papers)', prompt: '@papers write a publication-grade Related Work section synthesizing these attached papers with LaTeX \\cite{} keys.' },
     { label: 'Polish Academic Tone', prompt: 'Polish the academic English tone and grammar of this text.' },
     { label: 'Add Math Equation', prompt: 'Generate an equation environment with explanation.' },
     { label: 'Create Table', prompt: 'Format a professional booktabs table with sample data.' },
@@ -412,6 +502,7 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
 
   // Preset Goals for Agent
   const agentPresets = [
+    { label: '📚 Synthesize Related Work (@papers)', goal: 'Read all attached research papers using list_workspace_papers and read_paper, write a publication-grade Related Work section in main.tex citing each paper with \\cite{key}, ensure citations are in references.bib, and compile cleanly.' },
     { label: '🔨 Fix All Compiler Errors', goal: 'Inspect compiler diagnostic errors in the project, edit the offending files to fix syntax, and verify that the project compiles with zero errors.' },
     { label: '📊 Convert Tables to Booktabs', goal: 'Find all tabular environments in main.tex and convert them to clean publication-grade booktabs tables with toprule, midrule, and bottomrule. Compile to verify.' },
     { label: '📚 Add References & Citations', goal: 'Create or update references.bib with relevant bibtex citations for this paper topic, cite them in the introduction, and compile.' },
@@ -690,16 +781,80 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
           />
 
           {/* Agent Goal Input Composer */}
-          <div className="p-2 bg-sidebar border-t border-border-subtle shrink-0 flex flex-col gap-1.5">
+          <div className="p-2 bg-sidebar border-t border-border-subtle shrink-0 flex flex-col gap-1.5 relative">
+            {/* Mention Autocomplete Dropdown */}
+            {showMentionMenu === 'agent' && (
+              <div className="absolute bottom-full left-2 mb-1.5 w-64 bg-card border border-border-subtle rounded-xl shadow-xl py-1 z-30 text-xs animate-fadeIn">
+                <div className="px-2.5 py-1 text-[10px] uppercase font-bold text-text-muted tracking-wider border-b border-border-subtle/50">
+                  Insert Context Mention
+                </div>
+                <button
+                  type="button"
+                  className="w-full px-2.5 py-1.5 flex items-center justify-between hover:bg-card-hover cursor-pointer border-0 bg-transparent text-left transition-colors"
+                  onClick={() => handleSelectMention('@papers', 'agent')}
+                >
+                  <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-semibold">
+                    <BookOpen size={13} />
+                    <span>@papers</span>
+                  </div>
+                  <span className="text-[10px] text-text-muted">
+                    {workspacePapers.length} attached
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="w-full px-2.5 py-1.5 flex items-center justify-between hover:bg-card-hover cursor-pointer border-0 bg-transparent text-left transition-colors"
+                  onClick={() => handleSelectMention('@active', 'agent')}
+                >
+                  <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-semibold">
+                    <FileText size={13} />
+                    <span>@active</span>
+                  </div>
+                  <span className="text-[10px] text-text-muted truncate max-w-[110px]">
+                    {activeFilePath || 'main.tex'}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Quick @papers context pill */}
+            <div className="flex items-center justify-between px-0.5">
+              <button
+                type="button"
+                onClick={() => handleInsertPapersMention('agent')}
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                  workspacePapers.length > 0
+                    ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25 hover:bg-purple-500/20 shadow-2xs'
+                    : 'bg-card text-text-muted border-border-subtle hover:text-text-primary'
+                }`}
+                title={
+                  workspacePapers.length > 0
+                    ? `Click to insert @papers into goal (${workspacePapers.length} attached paper${workspacePapers.length === 1 ? '' : 's'})`
+                    : 'No papers attached yet. Open Research Papers from the Activity Bar to attach papers.'
+                }
+              >
+                <BookOpen size={11} className={workspacePapers.length > 0 ? 'text-purple-500' : 'text-text-muted'} />
+                <span>@papers</span>
+                <span className="text-[10px] font-mono px-1 rounded bg-black/5 dark:bg-white/10 font-bold">
+                  {workspacePapers.length}/10
+                </span>
+              </button>
+
+              <span className="text-[10.5px] text-text-muted">
+                {agentGoalInput.includes('@papers') ? (
+                  <span className="text-purple-600 dark:text-purple-400 font-medium">@papers active</span>
+                ) : (
+                  'Type @ to mention'
+                )}
+              </span>
+            </div>
+
             <textarea
               ref={agentTextareaRef}
               className="w-full bg-card border border-border-subtle focus:border-brand rounded-md p-2 text-xs text-text-primary resize-none outline-none font-sans placeholder:text-text-muted leading-relaxed"
-              placeholder="Describe research goal or manuscript edits (Enter to run)..."
+              placeholder="Describe research goal or manuscript edits (e.g. write related work using @papers)..."
               value={agentGoalInput}
-              onChange={(e) => {
-                setAgentGoalInput(e.target.value);
-                autoResize(agentTextareaRef.current);
-              }}
+              onChange={(e) => handleInputChange(e.target.value, 'agent')}
               onKeyDown={handleAgentKeyDown}
               rows={2}
               disabled={isAgentRunning}
@@ -830,16 +985,80 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
           />
 
           {/* Chat Input Composer */}
-          <div className="p-2 bg-sidebar border-t border-border-subtle shrink-0 flex flex-col gap-1.5">
+          <div className="p-2 bg-sidebar border-t border-border-subtle shrink-0 flex flex-col gap-1.5 relative">
+            {/* Mention Autocomplete Dropdown */}
+            {showMentionMenu === 'chat' && (
+              <div className="absolute bottom-full left-2 mb-1.5 w-64 bg-card border border-border-subtle rounded-xl shadow-xl py-1 z-30 text-xs animate-fadeIn">
+                <div className="px-2.5 py-1 text-[10px] uppercase font-bold text-text-muted tracking-wider border-b border-border-subtle/50">
+                  Insert Context Mention
+                </div>
+                <button
+                  type="button"
+                  className="w-full px-2.5 py-1.5 flex items-center justify-between hover:bg-card-hover cursor-pointer border-0 bg-transparent text-left transition-colors"
+                  onClick={() => handleSelectMention('@papers', 'chat')}
+                >
+                  <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-semibold">
+                    <BookOpen size={13} />
+                    <span>@papers</span>
+                  </div>
+                  <span className="text-[10px] text-text-muted">
+                    {workspacePapers.length} attached
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="w-full px-2.5 py-1.5 flex items-center justify-between hover:bg-card-hover cursor-pointer border-0 bg-transparent text-left transition-colors"
+                  onClick={() => handleSelectMention('@active', 'chat')}
+                >
+                  <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-semibold">
+                    <FileText size={13} />
+                    <span>@active</span>
+                  </div>
+                  <span className="text-[10px] text-text-muted truncate max-w-[110px]">
+                    {activeFilePath || 'main.tex'}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Quick @papers context pill */}
+            <div className="flex items-center justify-between px-0.5">
+              <button
+                type="button"
+                onClick={() => handleInsertPapersMention('chat')}
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                  workspacePapers.length > 0
+                    ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25 hover:bg-purple-500/20 shadow-2xs'
+                    : 'bg-card text-text-muted border-border-subtle hover:text-text-primary'
+                }`}
+                title={
+                  workspacePapers.length > 0
+                    ? `Click to insert @papers into prompt (${workspacePapers.length} attached paper${workspacePapers.length === 1 ? '' : 's'})`
+                    : 'No papers attached yet. Open Research Papers from the Activity Bar to attach papers.'
+                }
+              >
+                <BookOpen size={11} className={workspacePapers.length > 0 ? 'text-purple-500' : 'text-text-muted'} />
+                <span>@papers</span>
+                <span className="text-[10px] font-mono px-1 rounded bg-black/5 dark:bg-white/10 font-bold">
+                  {workspacePapers.length}/10
+                </span>
+              </button>
+
+              <span className="text-[10.5px] text-text-muted">
+                {inputPrompt.includes('@papers') ? (
+                  <span className="text-purple-600 dark:text-purple-400 font-medium">@papers active</span>
+                ) : (
+                  'Type @ to mention'
+                )}
+              </span>
+            </div>
+
             <textarea
               ref={chatTextareaRef}
               className="w-full bg-card border border-border-subtle focus:border-brand rounded-md p-2 text-xs text-text-primary resize-none outline-none font-sans placeholder:text-text-muted leading-relaxed"
               placeholder={chatPlaceholder}
               value={inputPrompt}
-              onChange={(e) => {
-                setInputPrompt(e.target.value);
-                autoResize(chatTextareaRef.current);
-              }}
+              onChange={(e) => handleInputChange(e.target.value, 'chat')}
               onKeyDown={handleChatKeyDown}
               rows={2}
               disabled={isChatLoading}

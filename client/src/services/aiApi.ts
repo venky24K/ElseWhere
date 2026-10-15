@@ -264,10 +264,11 @@ export interface PaperItem {
   abstract?: string;
   fullText?: string;
   bibtex?: string;
+  bibtexKey?: string;
 }
 
 export async function sendPaperSynthesisRequest(params: {
-  action: 'related_work' | 'benchmark_table' | 'bibtex' | 'extract_metadata';
+  action: 'related_work' | 'benchmark_table' | 'bibtex' | 'extract_metadata' | 'paper_summary' | 'synthesize_all';
   papers: PaperItem[];
   currentTopic?: string;
   model?: string;

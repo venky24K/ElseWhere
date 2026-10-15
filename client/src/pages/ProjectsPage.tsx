@@ -886,18 +886,24 @@ export function ProjectsPage() {
                             >
                               {project.name}
                             </Link>
-                            {project.tags && project.tags.length > 0 && (
-                              <div className="flex items-center gap-1 mt-1 flex-wrap">
-                                {project.tags.map((t) => (
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              {project.papersCount && project.papersCount > 0 ? (
+                                <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/60 inline-flex items-center gap-1">
+                                  <BookOpen size={10} />
+                                  <span>{project.papersCount}/10 papers</span>
+                                </span>
+                              ) : null}
+                              {project.tags && project.tags.length > 0 && (
+                                project.tags.map((t) => (
                                   <span
                                     key={t}
                                     className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-[#EEEEFF] text-[#4C4DBF] border border-[#8789FF]/20"
                                   >
                                     {t}
                                   </span>
-                                ))}
-                              </div>
-                            )}
+                                ))
+                              )}
+                            </div>
                           </div>
                         </div>
 

@@ -7,6 +7,8 @@ import {
   sendAiChatRequest,
   sendAiInlineEditRequest,
 } from '../services/aiApi';
+import { useProjectStore } from './useProjectStore';
+import { formatPapersContext } from '../services/prompts';
 
 export type AiProvider = 'groq' | 'gemini';
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'deep';
@@ -31,6 +33,8 @@ interface AiState {
   chatMessages: ChatMessage[];
   isChatLoading: boolean;
   chatAbortController: AbortController | null;
+  draftPrompt: string;
+  setDraftPrompt: (prompt: string) => void;
 
   // Reference Papers
   referencePapers: PaperItem[];
@@ -193,6 +197,8 @@ export const useAiStore = create<AiState>((set, get) => ({
   chatMessages: getStoredChatMessages(),
   isChatLoading: false,
   chatAbortController: null,
+  draftPrompt: '',
+  setDraftPrompt: (prompt) => set({ draftPrompt: prompt }),
 
   referencePapers: getStoredPapers(),
 
@@ -283,7 +289,23 @@ export const useAiStore = create<AiState>((set, get) => ({
           parts: [{ text: m.content }],
         }));
 
-      const effectiveDocContext = includeDocContext ? documentContext : undefined;
+      let effectiveDocContext = includeDocContext ? documentContext : undefined;
+      const projectPapers = useProjectStore.getState().workspacePapers || [];
+      const hasPapersMention = /@papers\b/i.test(prompt);
+
+      if (hasPapersMention) {
+        if (projectPapers.length > 0) {
+          const papersBlock = formatPapersContext(projectPapers);
+          effectiveDocContext = effectiveDocContext
+            ? `${effectiveDocContext}\n\n${papersBlock}`
+            : papersBlock;
+        } else {
+          const notice = '[Note: @papers was mentioned, but no research papers are currently attached to this workspace. Attach papers using the Research Papers tab in the Activity Bar.]';
+          effectiveDocContext = effectiveDocContext
+            ? `${effectiveDocContext}\n\n${notice}`
+            : notice;
+        }
+      }
 
       const chatRes = await sendAiChatRequest({
         prompt,

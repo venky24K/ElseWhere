@@ -21,7 +21,7 @@ export const ActivityBar: React.FC = () => {
     toggleSidebarTab,
   } = useLayoutStore();
 
-  const { files } = useProjectStore();
+  const { files, workspacePapers } = useProjectStore();
   const { provider } = useAiStore();
   const setIsSettingsOpen = useSettingsStore((s) => s.setIsOpen);
 
@@ -59,8 +59,9 @@ export const ActivityBar: React.FC = () => {
     },
     {
       id: 'papers',
-      label: 'Reference Papers',
+      label: 'Attach & Upload Papers (@papers)',
       icon: <BookOpen size={19} className="text-purple-400" />,
+      badge: workspacePapers?.length > 0 ? `${workspacePapers.length}/10` : undefined,
     },
     {
       id: 'humanizer',

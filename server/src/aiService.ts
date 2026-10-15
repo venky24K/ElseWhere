@@ -187,13 +187,14 @@ export interface PaperItem {
   abstract?: string;
   fullText?: string;
   bibtex?: string;
+  bibtexKey?: string;
 }
 
 export interface PaperSynthesisParams {
   provider?: 'groq' | 'gemini';
   apiKey?: string;
   model?: string;
-  action: 'related_work' | 'benchmark_table' | 'bibtex' | 'extract_metadata';
+  action: 'related_work' | 'benchmark_table' | 'bibtex' | 'extract_metadata' | 'paper_summary' | 'synthesize_all';
   papers: PaperItem[];
   currentTopic?: string;
 }
@@ -1062,23 +1063,62 @@ export async function dispatchPaperSynthesis(params: PaperSynthesisParams): Prom
   }
 
   const paperSummaries = papers
-    .map((p, idx) => `[Paper ${idx + 1}] Title: "${p.title}"\nAuthors: ${p.authors || 'Unknown'}\nYear: ${p.year || '2024'}\nAbstract: ${p.abstract || 'N/A'}\nKey Excerpt: ${(p.fullText || '').slice(0, 3000)}`)
+    .map(
+      (p, idx) =>
+        `[Paper ${idx + 1}]
+Title: "${p.title}"
+Authors: ${p.authors || 'Unknown'} (${p.year || '2024'})
+Citation Key: ${p.bibtexKey || `paper${idx + 1}`}
+Abstract: ${p.abstract || 'N/A'}
+Key Excerpt: ${(p.fullText || p.abstract || '').slice(0, 3000)}`
+    )
     .join('\n\n');
 
   let prompt = '';
-  if (action === 'related_work') {
+  if (action === 'paper_summary') {
+    const p = papers[0];
+    prompt = `You are ElseWhere's Academic Paper Analyst. Read this scientific paper and extract its structured research profile in JSON:
+Title: "${p.title}"
+Authors: ${p.authors || 'Unknown'} (${p.year || 'N/A'})
+Abstract: ${p.abstract || 'N/A'}
+Excerpt: ${(p.fullText || p.abstract || '').slice(0, 4500)}
+
+Respond with STRICT JSON matching this format:
+{
+  "contributions": [
+    "Key theoretical breakthrough or main contribution 1",
+    "Key algorithmic or empirical novelty 2",
+    "Practical architectural innovation 3"
+  ],
+  "methodology": "Concise 2-sentence summary of the core algorithms, loss functions, models, or theoretical proofs used.",
+  "datasetsAndResults": "Primary benchmark datasets evaluated, key metrics (accuracy, F1, BLEU, latency), and numerical gains over baselines.",
+  "limitations": "Key bottlenecks, assumptions, computational costs, or unaddressed failure modes identified in the paper."
+}
+
+Do NOT wrap in markdown backticks or commentary. Return ONLY the JSON object.`;
+  } else if (action === 'related_work') {
     prompt = `You are ElseWhere's Literature Synthesis Agent.
-Using the following uploaded reference papers, write a rigorous, publication-grade "Related Work / Literature Review" section for our paper on "${currentTopic || 'our proposed methodology'}".
+Using the following reference papers from the author's project workspace, write a rigorous, publication-grade "Related Work / Literature Review" section for our paper on "${currentTopic || 'our proposed methodology'}".
 
 Requirements:
-1. Synthesize themes, methodologies, and limitations across the papers.
-2. Group related contributions logically (e.g., foundational baselines vs. modern approximations).
-3. Cite each paper using appropriate LaTeX keys (e.g., \\cite{author2024}).
-4. Highlight how our work advances beyond these prior baselines.
-5. Use clean LaTeX formatting (\\section{Related Work}, \\paragraph{...}).
+1. Synthesize themes, methodologies, and limitations across the papers. Group related contributions logically into 3-4 structured thematic paragraphs with clear headings (\\paragraph{Foundations & Early Baselines}, \\paragraph{Recent Architectural Advances}, \\paragraph{Computational Bottlenecks & Gaps}).
+2. You MUST cite each paper using its exact Citation Key provided below via standard LaTeX \\cite{key} syntax. Example: \\cite{${papers[0]?.bibtexKey || 'key'}}.
+3. Conclude each subsection by explicitly highlighting how our proposed research addresses the limitations of these baselines.
+4. Output clean, publication-ready LaTeX code starting with \\section{Related Work}.
 
-Reference Papers:
+Reference Papers and Citation Keys:
 ${paperSummaries}`;
+  } else if (action === 'synthesize_all') {
+    prompt = `You are ElseWhere's Executive Scientific Synthesizer.
+Review all the following ${papers.length} research papers in the author's workspace and generate a comprehensive literature synthesis:
+1. A publication-grade "Related Work" section with inline citations for EVERY paper using its exact Citation Key (\\cite{key}).
+2. A publication-grade LaTeX "booktabs" comparative benchmark table summarizing all ${papers.length} papers (Method, Baseline Architecture, Benchmark Dataset, Key Metric, Limitations).
+3. A "Motivation & Research Gap" paragraph synthesizing what remains unsolved by these papers and how our proposed work addresses it.
+
+Reference Papers and Citation Keys:
+${paperSummaries}
+
+Provide clean, complete, and compilable LaTeX code with proper \\section, \\paragraph, and \\begin{table} environments.`;
   } else if (action === 'benchmark_table') {
     prompt = `You are ElseWhere's Scientific Data Extractor.
 Extract baseline metrics, datasets, and performance figures from the following papers, and format a clean publication-grade LaTeX "booktabs" benchmark comparison table.
@@ -1087,15 +1127,16 @@ Requirements:
 1. Use modern best-practice booktabs: \\toprule, \\midrule, \\bottomrule.
 2. NO vertical lines.
 3. Include columns: Method / Paper, Architecture / Model, Benchmark Dataset, Accuracy / F1 / Metric, Year.
-4. Include a row for "[Our Proposed Approach]" with placeholder bold metrics showing state-of-the-art results.
-5. Provide complete, compilable \\begin{table}[t] ... \\end{table} code with caption and label.
+4. Cite each row with \\cite{key}.
+5. Include a row for "[Our Proposed Approach]" with placeholder bold metrics showing state-of-the-art results.
+6. Provide complete, compilable \\begin{table}[t] ... \\end{table} code with caption and label.
 
 Reference Papers:
 ${paperSummaries}`;
   } else if (action === 'bibtex') {
     prompt = `You are ElseWhere's BibTeX Engine.
 Generate complete, clean, and publication-ready BibTeX entries for all the following reference papers.
-Ensure proper keys, authors, title, booktitle/journal, year, and URL/DOI fields if known.
+Ensure proper keys matching the Citation Keys below, authors, title, booktitle/journal, year, and URL/DOI fields if known.
 
 Reference Papers:
 ${paperSummaries}`;

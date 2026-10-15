@@ -92,6 +92,28 @@ export const LATEXER_AGENT_TOOLS: AgentToolParam[] = [
       },
     },
   },
+  {
+    name: 'list_workspace_papers',
+    description: 'List all research papers currently attached to this workspace (via @papers), including titles, authors, years, and LaTeX citation keys (\\cite{key}).',
+    parameters: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'read_paper',
+    description: 'Read the abstract, key findings, full text excerpt, and BibTeX entry of an attached research paper by its citation key or title.',
+    parameters: {
+      type: 'object',
+      properties: {
+        citation_key_or_title: {
+          type: 'string',
+          description: 'The citation key (e.g. vaswani2017attention) or paper title',
+        },
+      },
+      required: ['citation_key_or_title'],
+    },
+  },
 ];
 
 export interface ToolExecutionOutput {
@@ -395,6 +417,58 @@ export async function executeAgentTool(
           message: `Compilation execution failed: ${err.message}`,
         };
       }
+    }
+
+    case 'list_workspace_papers': {
+      const papers = store.workspacePapers || [];
+      if (papers.length === 0) {
+        return {
+          success: true,
+          message: 'No research papers are currently attached to this workspace. The author can attach papers from the Research Papers activity bar tab.',
+        };
+      }
+      const summary = papers
+        .map(
+          (p, idx) =>
+            `${idx + 1}. "${p.title}" by ${p.authors} (${p.year}) -> Citation: \\cite{${p.bibtexKey}}`
+        )
+        .join('\n');
+      return {
+        success: true,
+        message: `Attached Research Papers (${papers.length}/10):\n${summary}`,
+        data: {
+          count: papers.length,
+          papers: papers.map((p) => ({
+            id: p.id,
+            title: p.title,
+            authors: p.authors,
+            year: p.year,
+            bibtexKey: p.bibtexKey,
+          })),
+        },
+      };
+    }
+
+    case 'read_paper': {
+      const query = String(args.citation_key_or_title || '').toLowerCase().trim();
+      const papers = store.workspacePapers || [];
+      const found = papers.find(
+        (p) =>
+          p.bibtexKey.toLowerCase() === query ||
+          p.title.toLowerCase().includes(query) ||
+          query.includes(p.bibtexKey.toLowerCase())
+      );
+      if (!found) {
+        return {
+          success: false,
+          message: `Could not find attached paper matching "${args.citation_key_or_title}". Call "list_workspace_papers" to see all available papers and their keys.`,
+        };
+      }
+      return {
+        success: true,
+        message: `[Attached Paper: "${found.title}"]\nAuthors: ${found.authors} (${found.year})\nCitation: \\cite{${found.bibtexKey}}\nVenue: ${found.venue || 'N/A'}\nAbstract: ${found.abstract}\n\nFull Text Excerpt:\n${(found.fullText || found.abstract).slice(0, 5000)}\n\nBibTeX:\n${found.bibtex}`,
+        data: found,
+      };
     }
 
     default:

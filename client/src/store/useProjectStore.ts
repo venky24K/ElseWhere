@@ -6,6 +6,7 @@ import type {
   LaTeXDiagnostic,
   ProjectMetadata,
   VirtualFile,
+  WorkspacePaper,
 } from '../types';
 import { compileWorkspace, fetchEngineStatus, forwardSyncLookup, reverseSyncLookup } from '../services/api';
 import { TEMPLATES } from '../templates';
@@ -21,6 +22,13 @@ interface ProjectState {
   activeFilePath: string;
   openTabs: string[];
   folders: string[];
+
+  // Workspace Research Papers (Strict max 10 papers per project workspace)
+  workspacePapers: WorkspacePaper[];
+  addWorkspacePaper: (paper: Omit<WorkspacePaper, 'addedAt'>) => { success: boolean; error?: string };
+  removeWorkspacePaper: (paperId: string) => void;
+  updateWorkspacePaper: (paperId: string, updates: Partial<WorkspacePaper>) => void;
+  syncPapersToBibtex: () => { addedCount: number; existingCount: number };
 
   // Compilation
   compilationState: CompilationState;
@@ -163,6 +171,7 @@ function persistProjectState(
     openTabs: string[];
     folders: string[];
     selectedEngine?: string;
+    workspacePapers?: WorkspacePaper[];
   },
   immediate = false
 ) {
@@ -179,6 +188,7 @@ function persistProjectState(
         existing.lastModified = now;
         existing.filesCount = Object.keys(data.files).length;
         if (data.selectedEngine) existing.engine = data.selectedEngine;
+        if (data.workspacePapers) existing.papersCount = data.workspacePapers.length;
       } else {
         manifest.unshift({
           id: projectId,
@@ -188,6 +198,7 @@ function persistProjectState(
           lastModified: now,
           filesCount: Object.keys(data.files).length,
           engine: data.selectedEngine || 'Tectonic',
+          papersCount: data.workspacePapers?.length || 0,
         });
       }
       saveStoredManifest(manifest);
@@ -222,6 +233,124 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   activeFilePath: 'main.tex',
   openTabs: ['main.tex'],
   folders: [],
+
+  // Workspace Research Papers (Max 10 papers per project workspace)
+  workspacePapers: [],
+
+  addWorkspacePaper: (paper) => {
+    const current = get().workspacePapers || [];
+    if (current.length >= 10) {
+      return { success: false, error: 'Maximum limit of 10 research papers reached for this workspace.' };
+    }
+    if (
+      current.some(
+        (p) =>
+          p.id === paper.id ||
+          (p.title && paper.title && p.title.toLowerCase().trim() === paper.title.toLowerCase().trim())
+      )
+    ) {
+      return { success: false, error: 'This research paper is already in your workspace.' };
+    }
+
+    const newPaper: WorkspacePaper = {
+      ...paper,
+      addedAt: new Date().toISOString(),
+    };
+    const updated = [...current, newPaper];
+    set({ workspacePapers: updated });
+
+    persistProjectState(get().currentProjectId, {
+      projectName: get().projectName,
+      files: get().files,
+      activeFilePath: get().activeFilePath,
+      openTabs: get().openTabs,
+      folders: get().folders,
+      selectedEngine: get().selectedEngine,
+      workspacePapers: updated,
+    });
+
+    return { success: true };
+  },
+
+  removeWorkspacePaper: (paperId) => {
+    const updated = (get().workspacePapers || []).filter((p) => p.id !== paperId);
+    set({ workspacePapers: updated });
+
+    persistProjectState(get().currentProjectId, {
+      projectName: get().projectName,
+      files: get().files,
+      activeFilePath: get().activeFilePath,
+      openTabs: get().openTabs,
+      folders: get().folders,
+      selectedEngine: get().selectedEngine,
+      workspacePapers: updated,
+    });
+  },
+
+  updateWorkspacePaper: (paperId, updates) => {
+    const updated = (get().workspacePapers || []).map((p) => (p.id === paperId ? { ...p, ...updates } : p));
+    set({ workspacePapers: updated });
+
+    persistProjectState(get().currentProjectId, {
+      projectName: get().projectName,
+      files: get().files,
+      activeFilePath: get().activeFilePath,
+      openTabs: get().openTabs,
+      folders: get().folders,
+      selectedEngine: get().selectedEngine,
+      workspacePapers: updated,
+    });
+  },
+
+  syncPapersToBibtex: () => {
+    const papers = get().workspacePapers || [];
+    if (papers.length === 0) return { addedCount: 0, existingCount: 0 };
+
+    const files = { ...get().files };
+    const bibFile = files['references.bib'] || {
+      path: 'references.bib',
+      content: '% References & Literature Citations\n\n',
+    };
+
+    let content = bibFile.content;
+    let addedCount = 0;
+    let existingCount = 0;
+
+    for (const paper of papers) {
+      if (!paper.bibtex) continue;
+      const keyMatch = paper.bibtex.match(/@\w+\s*\{\s*([^,\s]+)/i);
+      const key = keyMatch ? keyMatch[1] : paper.bibtexKey;
+      if (content.includes(`{${key},`) || content.includes(`{${key} `)) {
+        existingCount++;
+      } else {
+        content = content.trimEnd() + '\n\n' + paper.bibtex.trim() + '\n';
+        addedCount++;
+      }
+    }
+
+    files['references.bib'] = {
+      ...bibFile,
+      content,
+    };
+
+    set({ files });
+
+    persistProjectState(
+      get().currentProjectId,
+      {
+        projectName: get().projectName,
+        files,
+        activeFilePath: get().activeFilePath,
+        openTabs: get().openTabs,
+        folders: get().folders,
+        selectedEngine: get().selectedEngine,
+        workspacePapers: papers,
+      },
+      true
+    );
+
+    return { addedCount, existingCount };
+  },
 
   compilationState: 'idle',
   buildId: null,
@@ -1103,6 +1232,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       folders: Array.isArray(projectData.folders) ? projectData.folders : [],
       selectedEngine: projectData.selectedEngine || 'auto',
       projects: manifest,
+      workspacePapers: Array.isArray((projectData as any).workspacePapers)
+        ? (projectData as any).workspacePapers
+        : [],
       pdfUrl: null,
       errors: [],
       warnings: [],
