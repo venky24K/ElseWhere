@@ -61,4 +61,7 @@ export interface ProjectMetadata {
   engine: string;
   tags?: string[];
   isFavorite?: boolean;
+  isArchived?: boolean;
+  isTrash?: boolean;
+  owner?: string;
 }

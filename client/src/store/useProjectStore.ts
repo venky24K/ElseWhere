@@ -87,6 +87,12 @@ interface ProjectState {
   createProject: (name: string, description?: string, templateId?: string) => string;
   duplicateProject: (projectId: string) => string;
   deleteProject: (projectId: string) => void;
+  renameProject: (projectId: string, newName: string) => void;
+  archiveProject: (projectId: string, archived?: boolean) => void;
+  trashProject: (projectId: string, inTrash?: boolean) => void;
+  restoreProject: (projectId: string) => void;
+  downloadProjectAsZip: (projectId: string) => Promise<void>;
+  addProjectTag: (projectId: string, tag: string) => void;
   toggleFavoriteProject: (projectId: string) => void;
   importOverleafZip: (file: File) => Promise<string>;
   refreshProjectsList: () => void;
@@ -849,6 +855,116 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } catch {}
 
     const manifest = getStoredManifest().filter((p) => p.id !== projectId);
+    saveStoredManifest(manifest);
+    set({ projects: manifest });
+  },
+
+  renameProject: (projectId: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const manifest = getStoredManifest().map((p) => {
+      if (p.id === projectId) {
+        return { ...p, name: trimmed, lastModified: new Date().toISOString() };
+      }
+      return p;
+    });
+    saveStoredManifest(manifest);
+
+    const raw = localStorage.getItem(`${PROJECT_PREFIX}${projectId}`);
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        data.projectName = trimmed;
+        localStorage.setItem(`${PROJECT_PREFIX}${projectId}`, JSON.stringify(data));
+      } catch {}
+    }
+
+    if (get().currentProjectId === projectId) {
+      set({ projectName: trimmed, projects: manifest });
+    } else {
+      set({ projects: manifest });
+    }
+  },
+
+  archiveProject: (projectId: string, archived = true) => {
+    const manifest = getStoredManifest().map((p) => {
+      if (p.id === projectId) {
+        return { ...p, isArchived: archived, isTrash: false, lastModified: new Date().toISOString() };
+      }
+      return p;
+    });
+    saveStoredManifest(manifest);
+    set({ projects: manifest });
+  },
+
+  trashProject: (projectId: string, inTrash = true) => {
+    const manifest = getStoredManifest().map((p) => {
+      if (p.id === projectId) {
+        return { ...p, isTrash: inTrash, lastModified: new Date().toISOString() };
+      }
+      return p;
+    });
+    saveStoredManifest(manifest);
+    set({ projects: manifest });
+  },
+
+  restoreProject: (projectId: string) => {
+    const manifest = getStoredManifest().map((p) => {
+      if (p.id === projectId) {
+        return { ...p, isTrash: false, isArchived: false, lastModified: new Date().toISOString() };
+      }
+      return p;
+    });
+    saveStoredManifest(manifest);
+    set({ projects: manifest });
+  },
+
+  downloadProjectAsZip: async (projectId: string) => {
+    let files: Record<string, VirtualFile> = {};
+    let projectName = 'project';
+    if (projectId === get().currentProjectId) {
+      files = get().files;
+      projectName = get().projectName;
+    } else {
+      const raw = localStorage.getItem(`${PROJECT_PREFIX}${projectId}`);
+      if (raw) {
+        try {
+          const data = JSON.parse(raw);
+          files = data.files || {};
+          projectName = data.projectName || 'project';
+        } catch {}
+      }
+      if (Object.keys(files).length === 0) {
+        files = getDefaultFiles();
+      }
+    }
+
+    const zip = new JSZip();
+    for (const [filePath, fileData] of Object.entries(files)) {
+      if (fileData.isBinary) {
+        zip.file(filePath, fileData.content, { base64: true });
+      } else {
+        zip.file(filePath, fileData.content);
+      }
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    saveAs(blob, `${safeName}.zip`);
+  },
+
+  addProjectTag: (projectId: string, tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    const manifest = getStoredManifest().map((p) => {
+      if (p.id === projectId) {
+        const existingTags = p.tags || [];
+        if (!existingTags.includes(trimmed)) {
+          return { ...p, tags: [...existingTags, trimmed], lastModified: new Date().toISOString() };
+        }
+      }
+      return p;
+    });
     saveStoredManifest(manifest);
     set({ projects: manifest });
   },
