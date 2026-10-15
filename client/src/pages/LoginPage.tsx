@@ -16,7 +16,8 @@ import { AnimatedLogoVisual } from '../components/AnimatedLogoVisual';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const login = useAuthStore((s) => s.login);
+  const loginWithEmail = useAuthStore((s) => s.loginWithEmail);
+  const signUpWithEmail = useAuthStore((s) => s.signUpWithEmail);
   const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
 
   const [isSignUp, setIsSignUp] = useState(false);
@@ -27,7 +28,27 @@ export const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const getFriendlyErrorMessage = (err: any): string => {
+    const code = err?.code || '';
+    if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
+      return 'Invalid email or password. Please verify your credentials.';
+    }
+    if (code === 'auth/email-already-in-use') {
+      return 'An account with this email already exists. Try signing in instead.';
+    }
+    if (code === 'auth/weak-password') {
+      return 'Password should be at least 6 characters.';
+    }
+    if (code === 'auth/popup-closed-by-user') {
+      return 'Google sign-in was cancelled before completion.';
+    }
+    if (code === 'auth/network-request-failed') {
+      return 'Network connection error. Please verify your internet connection.';
+    }
+    return err?.message || 'Authentication error. Please try again.';
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -42,20 +63,31 @@ export const LoginPage: React.FC = () => {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      login(email);
+    try {
+      if (isSignUp) {
+        await signUpWithEmail(email, password);
+      } else {
+        await loginWithEmail(email, password);
+      }
       setIsLoading(false);
       navigate('/project/default');
-    }, 600);
+    } catch (err) {
+      setIsLoading(false);
+      setError(getFriendlyErrorMessage(err));
+    }
   };
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
+    setError(null);
     setIsLoading(true);
-    setTimeout(() => {
-      loginWithGoogle();
+    try {
+      await loginWithGoogle();
       setIsLoading(false);
       navigate('/project/default');
-    }, 600);
+    } catch (err) {
+      setIsLoading(false);
+      setError(getFriendlyErrorMessage(err));
+    }
   };
 
   return (
