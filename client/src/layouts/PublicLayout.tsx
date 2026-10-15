@@ -18,7 +18,6 @@ export function PublicLayout() {
   const location = useLocation();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
 
   const navLinks = [
     { label: 'Features', path: '/features', icon: <Layers size={14} /> },
@@ -81,15 +80,20 @@ export function PublicLayout() {
             </Link>
 
             {isAuthenticated && user && (
-              <button
-                type="button"
-                onClick={logout}
-                title="Log out"
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6B7280] hover:text-[#14161A] rounded-full hover:bg-[#F5F5F7] transition-colors cursor-pointer"
+              <Link
+                to="/account"
+                className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#14161A] hover:bg-[#F5F5F7] rounded-full border border-[#E5E7EB] transition-all no-underline shadow-2xs hover:shadow-xs"
+                title="Account Settings"
               >
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.name} className="w-5 h-5 rounded-full object-cover" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-[#EEEEFF] text-[#4C4DBF] flex items-center justify-center font-bold text-[10px]">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <span>{user.name}</span>
-                <span className="text-[#94A3B8]">(Sign out)</span>
-              </button>
+              </Link>
             )}
 
             <Link

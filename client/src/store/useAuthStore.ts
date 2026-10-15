@@ -16,6 +16,10 @@ export interface AuthUser {
   name: string;
   avatarUrl?: string;
   isFirebaseUser?: boolean;
+  emailVerified?: boolean;
+  createdAt?: string;
+  lastSignInAt?: string;
+  providerId?: string;
 }
 
 interface AuthState {
@@ -50,9 +54,13 @@ export const useAuthStore = create<AuthState>((set) => {
           const authUser: AuthUser = {
             id: fbUser.uid,
             email: fbUser.email || '',
-            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Researcher',
+            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
             avatarUrl: fbUser.photoURL || undefined,
             isFirebaseUser: true,
+            emailVerified: fbUser.emailVerified,
+            createdAt: fbUser.metadata?.creationTime,
+            lastSignInAt: fbUser.metadata?.lastSignInTime,
+            providerId: fbUser.providerData?.[0]?.providerId || 'firebase',
           };
           try {
             localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
@@ -91,9 +99,13 @@ export const useAuthStore = create<AuthState>((set) => {
         const authUser: AuthUser = {
           id: fbUser.uid,
           email: fbUser.email || email,
-          name: fbUser.displayName || email.split('@')[0] || 'Researcher',
+          name: fbUser.displayName || email.split('@')[0] || 'User',
           avatarUrl: fbUser.photoURL || undefined,
           isFirebaseUser: true,
+          emailVerified: fbUser.emailVerified,
+          createdAt: fbUser.metadata?.creationTime,
+          lastSignInAt: fbUser.metadata?.lastSignInTime,
+          providerId: 'password',
         };
         try {
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
@@ -101,13 +113,15 @@ export const useAuthStore = create<AuthState>((set) => {
         set({ user: authUser, isAuthenticated: true });
         await firestoreService.syncUserProfile(authUser);
       } else {
-        // Fallback local demo mode when running without production API keys
-        const username = email.split('@')[0] || 'Researcher';
+        const username = email.split('@')[0] || 'User';
         const authUser: AuthUser = {
           id: 'usr_' + Math.random().toString(36).substring(2, 9),
           email,
           name: username.charAt(0).toUpperCase() + username.slice(1),
           isFirebaseUser: false,
+          emailVerified: false,
+          createdAt: new Date().toISOString(),
+          providerId: 'password',
         };
         try {
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
@@ -123,9 +137,13 @@ export const useAuthStore = create<AuthState>((set) => {
         const authUser: AuthUser = {
           id: fbUser.uid,
           email: fbUser.email || email,
-          name: email.split('@')[0] || 'Researcher',
+          name: email.split('@')[0] || 'User',
           avatarUrl: fbUser.photoURL || undefined,
           isFirebaseUser: true,
+          emailVerified: fbUser.emailVerified,
+          createdAt: fbUser.metadata?.creationTime,
+          lastSignInAt: fbUser.metadata?.lastSignInTime,
+          providerId: 'password',
         };
         try {
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
@@ -133,12 +151,15 @@ export const useAuthStore = create<AuthState>((set) => {
         set({ user: authUser, isAuthenticated: true });
         await firestoreService.syncUserProfile(authUser);
       } else {
-        const username = email.split('@')[0] || 'Researcher';
+        const username = email.split('@')[0] || 'User';
         const authUser: AuthUser = {
           id: 'usr_' + Math.random().toString(36).substring(2, 9),
           email,
           name: username.charAt(0).toUpperCase() + username.slice(1),
           isFirebaseUser: false,
+          emailVerified: false,
+          createdAt: new Date().toISOString(),
+          providerId: 'password',
         };
         try {
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
@@ -154,9 +175,13 @@ export const useAuthStore = create<AuthState>((set) => {
         const authUser: AuthUser = {
           id: fbUser.uid,
           email: fbUser.email || '',
-          name: fbUser.displayName || 'Researcher',
+          name: fbUser.displayName || 'Google User',
           avatarUrl: fbUser.photoURL || undefined,
           isFirebaseUser: true,
+          emailVerified: true,
+          createdAt: fbUser.metadata?.creationTime,
+          lastSignInAt: fbUser.metadata?.lastSignInTime,
+          providerId: 'google.com',
         };
         try {
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
@@ -164,12 +189,14 @@ export const useAuthStore = create<AuthState>((set) => {
         set({ user: authUser, isAuthenticated: true });
         await firestoreService.syncUserProfile(authUser);
       } else {
-        // Fallback local demo user
         const authUser: AuthUser = {
           id: 'google_' + Math.random().toString(36).substring(2, 9),
-          email: 'scholar@gmail.com',
-          name: 'Alex Rivera',
+          email: 'user@gmail.com',
+          name: 'User',
           isFirebaseUser: false,
+          emailVerified: true,
+          createdAt: new Date().toISOString(),
+          providerId: 'google.com',
         };
         try {
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));

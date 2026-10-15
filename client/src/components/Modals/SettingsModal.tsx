@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useSettingsStore, type SettingsTab } from '../../store/useSettingsStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useAiStore } from '../../store/useAiStore';
@@ -144,12 +145,11 @@ export const SettingsModal: React.FC = () => {
               })}
             </div>
 
-            {/* Bottom External Links */}
+            {/* Bottom Account & Subscription Links */}
             <div className="pt-3 border-t border-border-subtle space-y-0.5">
-              <a
-                href="https://github.com/venky24K/Latexer"
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                to="/account"
+                onClick={() => setIsOpen(false)}
                 className="w-full flex items-center justify-between px-3 py-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-card-hover transition-colors text-left text-xs no-underline"
               >
                 <div className="flex items-center gap-2.5">
@@ -157,12 +157,11 @@ export const SettingsModal: React.FC = () => {
                   <span>Account settings</span>
                 </div>
                 <ExternalLink size={13} className="text-text-muted" />
-              </a>
+              </Link>
 
-              <a
-                href="https://github.com/venky24K/Latexer"
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                to="/pricing"
+                onClick={() => setIsOpen(false)}
                 className="w-full flex items-center justify-between px-3 py-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-card-hover transition-colors text-left text-xs no-underline"
               >
                 <div className="flex items-center gap-2.5">
@@ -170,7 +169,7 @@ export const SettingsModal: React.FC = () => {
                   <span>Subscription</span>
                 </div>
                 <ExternalLink size={13} className="text-text-muted" />
-              </a>
+              </Link>
             </div>
           </div>
 

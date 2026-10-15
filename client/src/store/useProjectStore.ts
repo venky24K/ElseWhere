@@ -96,20 +96,25 @@ const MANIFEST_KEY = 'latexer_projects_manifest_v2';
 const PROJECT_PREFIX = 'latexer_project_data_';
 const LEGACY_STORAGE_KEY = 'latexer_project_v1';
 
+const MOCK_PROJECT_IDS = new Set(['neurips-2026', 'phd-dissertation', 'quantum-beamer']);
+
 export function getStoredManifest(): ProjectMetadata[] {
   try {
     const raw = localStorage.getItem(MANIFEST_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        const cleaned = parsed.filter((p: ProjectMetadata) => !MOCK_PROJECT_IDS.has(p.id));
+        if (cleaned.length > 0) {
+          return cleaned;
+        }
       }
     }
   } catch (err) {
     console.warn('[VFS] Failed reading project manifest:', err);
   }
 
-  // Seed default manifest
+  // Initial manifest with the primary workspace
   const now = new Date().toISOString();
   const initialManifest: ProjectMetadata[] = [
     {
@@ -122,36 +127,6 @@ export function getStoredManifest(): ProjectMetadata[] {
       engine: 'Tectonic',
       tags: ['Academic', 'Paper'],
       isFavorite: true,
-    },
-    {
-      id: 'neurips-2026',
-      name: 'Diffusion Latents for PDE Acceleration',
-      description: 'NeurIPS 2026 conference paper template with two-column camera ready format.',
-      createdAt: now,
-      lastModified: now,
-      filesCount: 2,
-      engine: 'Tectonic',
-      tags: ['Machine Learning', 'Conference'],
-    },
-    {
-      id: 'phd-dissertation',
-      name: 'Departmental PhD Dissertation Draft',
-      description: 'Multi-chapter thesis with frontmatter, theorem environments, and appendices.',
-      createdAt: now,
-      lastModified: now,
-      filesCount: 1,
-      engine: 'pdflatex',
-      tags: ['Thesis', 'Dissertation'],
-    },
-    {
-      id: 'quantum-beamer',
-      name: 'Quantum State Tomography Presentation',
-      description: 'Modern conference slide deck with clean slide layouts, theorem blocks, and code formatting.',
-      createdAt: now,
-      lastModified: now,
-      filesCount: 1,
-      engine: 'Tectonic',
-      tags: ['Presentation', 'Slides'],
     },
   ];
 

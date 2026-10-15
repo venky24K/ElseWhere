@@ -8,6 +8,7 @@ import { PricingPage } from './pages/PricingPage';
 import { DocsPage } from './pages/DocsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { LoginPage } from './pages/LoginPage';
+import { AccountPage } from './pages/AccountPage';
 
 export function App() {
   return (
@@ -21,6 +22,7 @@ export function App() {
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/docs" element={<DocsPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/account" element={<AccountPage />} />
         </Route>
 
         {/* Standalone Authentication System (No Header / Footer) */}
