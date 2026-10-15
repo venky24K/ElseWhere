@@ -362,7 +362,18 @@ export function ProjectsPage() {
                 title={user?.name || 'Account'}
               >
                 {user?.avatarUrl ? (
-                  <img src={user.avatarUrl} alt={user.name} className="w-full h-full rounded-full object-cover" />
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    onError={(e) => {
+                      const parent = e.currentTarget.parentElement;
+                      e.currentTarget.remove();
+                      if (parent) {
+                        parent.innerText = (user?.name?.charAt(0) || 'U').toUpperCase();
+                      }
+                    }}
+                    className="w-full h-full rounded-full object-cover"
+                  />
                 ) : (
                   (user?.name?.charAt(0) || 'U').toUpperCase()
                 )}

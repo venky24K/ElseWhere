@@ -23,6 +23,7 @@ import { auth } from '../lib/firebase';
 export const AccountPage: React.FC = () => {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const [avatarError, setAvatarError] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const logout = useAuthStore((s) => s.logout);
   const projects = useProjectStore((s) => s.projects);
@@ -154,10 +155,11 @@ export const AccountPage: React.FC = () => {
           {/* Profile Card */}
           <div className="bg-white rounded-2xl border border-[#EFEFF2] p-6 shadow-2xs text-center flex flex-col items-center">
             <div className="relative mb-4">
-              {user.avatarUrl ? (
+              {user.avatarUrl && !avatarError ? (
                 <img
                   src={user.avatarUrl}
                   alt={user.name}
+                  onError={() => setAvatarError(true)}
                   className="w-20 h-20 rounded-full object-cover border-2 border-white shadow-md"
                 />
               ) : (

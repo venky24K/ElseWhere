@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
   ArrowRight,
@@ -14,6 +15,28 @@ import { useAuthStore } from '../store/useAuthStore';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
+function UserNavAvatar({ name, avatarUrl }: { name?: string; avatarUrl?: string }) {
+  const [imgError, setImgError] = useState(false);
+  const initial = (name?.charAt(0) || 'U').toUpperCase();
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name || 'User'}
+        onError={() => setImgError(true)}
+        className="w-5 h-5 rounded-full object-cover shrink-0"
+      />
+    );
+  }
+
+  return (
+    <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#EEEEFF] to-[#D5D7FF] text-[#4C4DBF] flex items-center justify-center font-bold text-[10px] shrink-0 border border-[#8789FF]/30">
+      {initial}
+    </div>
+  );
+}
+
 export function PublicLayout() {
   const location = useLocation();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -24,7 +47,6 @@ export function PublicLayout() {
     { label: 'Templates', path: '/templates', icon: <LayoutTemplate size={14} /> },
     { label: 'Docs', path: '/docs', icon: <BookOpen size={14} /> },
     { label: 'Pricing', path: '/pricing', icon: <CreditCard size={14} /> },
-    { label: 'My Projects', path: '/projects', icon: <FolderKanban size={14} /> },
   ];
 
   return (
@@ -32,73 +54,85 @@ export function PublicLayout() {
 
       {/* Main Public Navigation Bar (Glassmorphic canvas style) */}
       <header className="sticky top-0 z-50 h-[70px] bg-white/85 backdrop-blur-[20px] border-b border-[#EFEFF2] transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 h-full flex items-center justify-between">
-          {/* Logo & Brand */}
-          <Link to="/" className="flex items-center gap-3 group cursor-pointer no-underline">
-            <img
-              src="/logo.svg"
-              alt="ElseWhere Logo"
-              className="w-8 h-8 rounded-lg group-hover:scale-105 transition-transform duration-200 object-contain"
-            />
-            <div className="flex items-center gap-2">
-              <span className="font-fraunces text-[1.35rem] font-semibold tracking-[-0.02em] text-[#14161A]">
-                ElseWhere
-              </span>
-              <span className="hidden sm:inline-block text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-[#EEEEFF] text-[#4C4DBF] border border-[#8789FF]/20">
-                Studio
-              </span>
-            </div>
-          </Link>
-
-          {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-7">
-            {navLinks.map((link) => {
-              const isActive = location.pathname === link.path;
-              return (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`text-[0.95rem] transition-colors duration-200 no-underline ${isActive
-                    ? 'text-[#14161A] font-semibold'
-                    : 'text-[#6B7280] font-medium hover:text-[#14161A]'
-                    }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Right Action Buttons */}
-          <div className="flex items-center gap-3">
-            <Link
-              to="/projects"
-              className="hidden sm:inline-flex items-center gap-2 px-4 py-2 text-[0.9rem] font-medium rounded-full border border-[#EFEFF2] bg-white hover:bg-[#F9FAFB] text-[#14161A] transition-all duration-200 no-underline shadow-2xs hover:shadow-xs"
-            >
-              <FolderKanban size={14} className="text-[#6B7280]" />
-              My Projects
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between gap-4">
+          
+          {/* Left Group: Brand Logo & Desktop Nav Links */}
+          <div className="flex items-center gap-8 lg:gap-10 shrink-0">
+            {/* Logo & Brand */}
+            <Link to="/" className="flex items-center gap-3 group cursor-pointer no-underline shrink-0">
+              <img
+                src="/logo.svg"
+                alt="ElseWhere Logo"
+                className="w-8 h-8 rounded-lg group-hover:scale-105 transition-transform duration-200 object-contain shrink-0"
+              />
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-fraunces text-[1.35rem] font-semibold tracking-[-0.02em] text-[#14161A]">
+                  ElseWhere
+                </span>
+                <span className="hidden sm:inline-block text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-[#EEEEFF] text-[#4C4DBF] border border-[#8789FF]/20">
+                  Studio
+                </span>
+              </div>
             </Link>
 
-            {isAuthenticated && user && (
-              <Link
-                to="/account"
-                className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#14161A] hover:bg-[#F5F5F7] rounded-full border border-[#E5E7EB] transition-all no-underline shadow-2xs hover:shadow-xs"
-                title="Account Settings"
-              >
-                {user.avatarUrl ? (
-                  <img src={user.avatarUrl} alt={user.name} className="w-5 h-5 rounded-full object-cover" />
-                ) : (
-                  <div className="w-5 h-5 rounded-full bg-[#EEEEFF] text-[#4C4DBF] flex items-center justify-center font-bold text-[10px]">
-                    {user.name.charAt(0).toUpperCase()}
-                  </div>
+            {/* Desktop Nav Links */}
+            <nav className="hidden md:flex items-center gap-6 lg:gap-7">
+              {navLinks.map((link) => {
+                const isActive = location.pathname === link.path;
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`text-[0.92rem] transition-colors duration-200 no-underline whitespace-nowrap ${
+                      isActive
+                        ? 'text-[#14161A] font-semibold'
+                        : 'text-[#6B7280] font-medium hover:text-[#14161A]'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Right Action Buttons */}
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            {isAuthenticated ? (
+              <>
+                <Link
+                  to="/projects"
+                  className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 text-xs sm:text-[0.88rem] font-medium rounded-full border border-[#EFEFF2] bg-white hover:bg-[#F9FAFB] text-[#14161A] transition-all duration-200 no-underline shadow-2xs hover:shadow-xs"
+                >
+                  <FolderKanban size={14} className="text-[#6B7280]" />
+                  <span>My Projects</span>
+                </Link>
+
+                {user && (
+                  <Link
+                    to="/account"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#14161A] hover:bg-[#F5F5F7] rounded-full border border-[#E5E7EB] transition-all no-underline shadow-2xs hover:shadow-xs max-w-[200px]"
+                    title={`Account: ${user.name}`}
+                  >
+                    <UserNavAvatar name={user.name} avatarUrl={user.avatarUrl} />
+                    <span className="truncate max-w-[110px] sm:max-w-[140px] text-xs font-medium text-[#14161A]">
+                      {user.name}
+                    </span>
+                  </Link>
                 )}
-                <span>{user.name}</span>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="text-xs sm:text-sm font-semibold text-[#6B7280] hover:text-[#14161A] px-3 py-1.5 rounded-full transition-colors no-underline"
+              >
+                Sign In
               </Link>
             )}
 
             <Link
               to={isAuthenticated ? '/project/default' : '/login'}
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-[0.9rem] font-semibold rounded-full bg-[#14161A] hover:bg-[#34345C] text-white shadow-xs transition-all duration-200 no-underline group hover:-translate-y-0.5"
+              className="inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-[0.9rem] font-semibold rounded-full bg-[#14161A] hover:bg-[#34345C] text-white shadow-xs transition-all duration-200 no-underline group hover:-translate-y-0.5 shrink-0"
             >
               <span>Enter Workspace</span>
               <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
