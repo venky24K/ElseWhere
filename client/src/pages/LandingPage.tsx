@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  ArrowRight,
   Bug,
   FileText,
   LayoutDashboard,
@@ -12,6 +13,7 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
+import { useAuthStore } from '../store/useAuthStore';
 
 /* ------------------------------------------------------------------ */
 /* Interactive Agent Demos                                            */
@@ -162,6 +164,7 @@ const FEATURES = [
 ];
 
 export const LandingPage: React.FC = () => {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [activeDemoId, setActiveDemoId] = useState<string>('discover');
   const activeDemo = AGENT_DEMOS.find((d) => d.id === activeDemoId) || AGENT_DEMOS[0];
 
@@ -227,12 +230,6 @@ export const LandingPage: React.FC = () => {
 
       {/* Hero Section */}
       <section className="relative z-10 flex flex-col items-center text-center max-w-[1050px] mx-auto pt-24 pb-16 px-5 sm:px-8">
-        {/* Eyebrow Badge */}
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#F5F5F7] text-[#14161A] text-xs font-semibold mb-8 border border-[#EFEFF2] shadow-2xs">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Local-First Scientific LaTeX Studio & AI Partner</span>
-        </div>
-
         {/* Hero Headline */}
         <h1 className="landing-hero-h1 text-[#14161A] mb-6 max-w-4xl">
           Scientific writing, <br className="hidden sm:inline" />
@@ -244,54 +241,30 @@ export const LandingPage: React.FC = () => {
           An infinite, collaborative LaTeX workspace built for researchers who move fast. Sub-second compilation, bi-directional SyncTeX, and AI agents for literature discovery and drafting.
         </p>
 
-        {/* Action Buttons (Canvas dark pill style) */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md">
+        {/* Action Buttons (Refined luxury pill style) */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 w-full sm:w-auto">
           <Link
-            to="/project/default"
-            className="hover:!bg-[#34345C] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+            to={isAuthenticated ? '/project/default' : '/login'}
+            className="group relative inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full text-white font-semibold text-[1.05rem] whitespace-nowrap transition-all duration-300 w-full sm:w-auto hover:-translate-y-0.5 active:translate-y-0 no-underline shadow-[inset_0_1px_0_0_rgba(255,255,255,0.18),0_4px_18px_-2px_rgba(17,19,23,0.35)] hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_10px_28px_-4px_rgba(76,77,191,0.35)]"
             style={{
-              background: '#14161A',
-              color: '#fff',
-              border: 'none',
-              padding: '16px 32px',
-              borderRadius: 30,
-              fontSize: '1.05rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              width: '100%',
-              textDecoration: 'none',
+              background: 'linear-gradient(180deg, #1E2028 0%, #111317 100%)',
+              border: '1px solid #2F333D',
             }}
           >
-            <LayoutDashboard size={19} />
-            Enter Workspace
+            <LayoutDashboard size={19} className="text-[#8789FF] group-hover:scale-110 transition-transform duration-200" />
+            <span>Enter Workspace</span>
+            <ArrowRight size={17} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all duration-200" />
           </Link>
 
           <Link
             to="/templates"
-            className="hover:!bg-[#F9FAFB] hover:!border-[#D5D7E2] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
-            style={{
-              background: '#FFFFFF',
-              color: '#14161A',
-              border: '1px solid #EFEFF2',
-              padding: '16px 28px',
-              borderRadius: 30,
-              fontSize: '1.05rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 9,
-              width: '100%',
-              textDecoration: 'none',
-            }}
+            className="group inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full text-[#14161A] font-semibold text-[1.05rem] whitespace-nowrap bg-white border border-[#E2E4E9] hover:border-[#CBD5E1] hover:bg-[#F9FAFB] transition-all duration-300 w-full sm:w-auto hover:-translate-y-0.5 active:translate-y-0 no-underline shadow-[0_2px_8px_-2px_rgba(20,22,26,0.06),0_1px_2px_0_rgba(20,22,26,0.04)] hover:shadow-[0_12px_24px_-6px_rgba(20,22,26,0.1)]"
           >
-            <LayoutTemplate size={18} className="text-[#6B7280]" />
-            40+ Templates
+            <LayoutTemplate size={18} className="text-[#6B7280] group-hover:text-[#4C4DBF] transition-colors duration-200" />
+            <span>40+ Templates</span>
+            <span className="ml-1 text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#EEEEFF] text-[#4C4DBF] border border-[#8789FF]/30">
+              Free
+            </span>
           </Link>
         </div>
       </section>
@@ -703,25 +676,16 @@ export const LandingPage: React.FC = () => {
             </p>
 
             <Link
-              to="/project/default"
-              className="hover:!bg-[#34345C] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+              to={isAuthenticated ? '/project/default' : '/login'}
+              className="group relative inline-flex items-center justify-center gap-3 px-9 py-4 rounded-full text-white font-semibold text-[1.05rem] whitespace-nowrap transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 no-underline shadow-[inset_0_1px_0_0_rgba(255,255,255,0.18),0_4px_18px_-2px_rgba(17,19,23,0.35)] hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_10px_28px_-4px_rgba(76,77,191,0.35)]"
               style={{
-                background: '#14161A',
-                color: '#fff',
-                border: 'none',
-                padding: '16px 36px',
-                borderRadius: 30,
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 12,
-                textDecoration: 'none',
+                background: 'linear-gradient(180deg, #1E2028 0%, #111317 100%)',
+                border: '1px solid #2F333D',
               }}
             >
-              <LayoutDashboard size={20} />
-              Enter Workspace
+              <LayoutDashboard size={20} className="text-[#8789FF] group-hover:scale-110 transition-transform duration-200" />
+              <span>Enter Workspace</span>
+              <ArrowRight size={18} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all duration-200" />
             </Link>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { TemplatesPage } from './pages/TemplatesPage';
 import { PricingPage } from './pages/PricingPage';
 import { DocsPage } from './pages/DocsPage';
 import { ProjectsPage } from './pages/ProjectsPage';
+import { LoginPage } from './pages/LoginPage';
 
 export function App() {
   return (
@@ -21,6 +22,11 @@ export function App() {
           <Route path="/docs" element={<DocsPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
         </Route>
+
+        {/* Standalone Authentication System (No Header / Footer) */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<LoginPage />} />
+        <Route path="/signin" element={<Navigate to="/login" replace />} />
 
         {/* Authenticated Heavy Studio Workspace */}
         <Route path="/project/:projectId" element={<StudioLayout />} />

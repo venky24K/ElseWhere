@@ -10,10 +10,15 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
+import { useAuthStore } from '../store/useAuthStore';
+
 const CURRENT_YEAR = new Date().getFullYear();
 
 export function PublicLayout() {
   const location = useLocation();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   const navLinks = [
     { label: 'Features', path: '/features', icon: <Layers size={14} /> },
@@ -75,8 +80,20 @@ export function PublicLayout() {
               My Projects
             </Link>
 
+            {isAuthenticated && user && (
+              <button
+                type="button"
+                onClick={logout}
+                title="Log out"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6B7280] hover:text-[#14161A] rounded-full hover:bg-[#F5F5F7] transition-colors cursor-pointer"
+              >
+                <span>{user.name}</span>
+                <span className="text-[#94A3B8]">(Sign out)</span>
+              </button>
+            )}
+
             <Link
-              to="/project/default"
+              to={isAuthenticated ? '/project/default' : '/login'}
               className="inline-flex items-center gap-2 px-5 py-2.5 text-[0.9rem] font-semibold rounded-full bg-[#14161A] hover:bg-[#34345C] text-white shadow-xs transition-all duration-200 no-underline group hover:-translate-y-0.5"
             >
               <span>Enter Workspace</span>
