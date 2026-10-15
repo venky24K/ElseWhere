@@ -1,22 +1,20 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
-  ArrowRight,
   Bug,
-  Check,
   FileText,
-  History,
+  LayoutDashboard,
+  LayoutTemplate,
   PenLine,
-  Play,
-  Quote,
   Search,
+  Sparkles,
   Terminal,
   Users,
+  Zap,
 } from 'lucide-react';
-import { useProjectStore } from '../store/useProjectStore';
 
 /* ------------------------------------------------------------------ */
-/* Content                                                            */
+/* Interactive Agent Demos                                            */
 /* ------------------------------------------------------------------ */
 
 const AGENT_DEMOS = [
@@ -24,381 +22,623 @@ const AGENT_DEMOS = [
     id: 'discover',
     label: 'Find papers',
     icon: Search,
+    badgeColor: '#EEEEFF',
+    iconColor: '#4C4DBF',
     prompt: 'Find the base paper for transformer-based protein structure prediction.',
     steps: [
-      'Searched arXiv and OpenAlex',
-      'Ranked results by relevance and citations',
-      'Added 3 references to references.bib',
+      'Searched arXiv and OpenAlex for AlphaFold foundations',
+      'Ranked 14 papers by citation graph and methodology relevance',
+      'Formatted verified entry and inserted into references.bib',
     ],
     file: 'references.bib',
     code: [
       '@article{jumper2021highly,',
       '  title   = {Highly accurate protein structure',
       '             prediction with AlphaFold},',
-      '  author  = {Jumper, John and others},',
+      '  author  = {Jumper, John and Evans, Richard and others},',
       '  journal = {Nature},',
+      '  volume  = {596},',
       '  year    = {2021}',
       '}',
     ],
   },
   {
     id: 'write',
-    label: 'Write',
+    label: 'Draft section',
     icon: PenLine,
-    prompt: 'Draft the Related Work section using the papers we just added.',
+    badgeColor: '#EAFFF6',
+    iconColor: '#1F6B4F',
+    prompt: 'Draft the Related Work section connecting these attention models to our benchmark.',
     steps: [
-      'Read the 3 selected papers',
-      'Grouped them by approach',
-      'Drafted section with \\cite{} links',
+      'Analyzed 3 selected references from bibliography',
+      'Synthesized architectural differences in multi-head attention',
+      'Generated LaTeX markup with native \\cite{} cross-references',
     ],
     file: 'main.tex',
     code: [
       '\\section{Related Work}',
-      'Early approaches relied on handcrafted',
-      'features~\\cite{baker2001}. More recently,',
-      'attention-based models have achieved',
-      'near-experimental accuracy~\\cite{jumper2021highly}.',
+      'Early computational pipelines relied heavily on handcrafted geometric features~\\cite{baker2001}.',
+      'More recently, deep attention-based architectures have achieved near-experimental accuracy~\\cite{jumper2021highly}.',
+      'Our benchmark extends this framework to multi-chain molecular dynamics.',
     ],
   },
   {
     id: 'code',
-    label: 'Debug code',
+    label: 'Debug experiments',
     icon: Bug,
-    prompt: 'My training script crashes on the second epoch. Can you fix it?',
+    badgeColor: '#FFEEFA',
+    iconColor: '#B03A8C',
+    prompt: 'My DataLoader crashes with a batch dimension mismatch during training.',
     steps: [
-      'Reproduced the error in a sandbox',
-      'Found a tensor shape mismatch in the loader',
-      'Patched train.py and re-ran successfully',
+      'Isolated stack trace to collate_fn in training pipeline',
+      'Detected variable sequence length in token tensor',
+      'Patched batch padding and validated execution without error',
     ],
     file: 'train.py',
     code: [
-      'def collate(batch):',
+      'def collate_batch(batch):',
+      '-   # Raw stacking fails on variable length sequences',
       '-   return torch.stack(batch)',
-      '+   return pad_sequence(batch, batch_first=True)',
+      '+   # Dynamic zero-padding across variable token lengths',
+      '+   return pad_sequence(batch, batch_first=True, padding_value=0)',
     ],
   },
   {
     id: 'compile',
-    label: 'Compile',
-    icon: Play,
-    prompt: 'The document will not compile. What is wrong?',
+    label: 'Doctor fix',
+    icon: Sparkles,
+    badgeColor: '#FFFDE6',
+    iconColor: '#B58105',
+    prompt: 'Undefined control sequence \\toprule on line 42. Fix document compiler error.',
     steps: [
-      'Found an undefined control sequence on line 42',
-      'Added the missing booktabs package',
-      'Recompiled with no errors',
+      'Detected missing booktabs package required for publication tables',
+      'Injected \\usepackage{booktabs} into LaTeX preamble',
+      'Triggered incremental Tectonic re-compilation: 0 errors in 0.28s',
     ],
     file: 'main.tex',
     code: [
       '\\usepackage{amsmath}',
-      '+ \\usepackage{booktabs}',
       '\\usepackage{graphicx}',
+      '+ % Injected by LaTeX Doctor for publication-grade tables',
+      '+ \\usepackage{booktabs}',
+      '\\begin{table}[h]',
     ],
   },
-] as const;
-
-const WORKFLOW = [
-  {
-    step: '01',
-    title: 'Discover',
-    text: 'Describe your topic. The agent finds the base paper, related work, and citations worth building on.',
-    color: 'text-indigo-500',
-    bg: 'bg-indigo-50',
-  },
-  {
-    step: '02',
-    title: 'Plan & draft',
-    text: 'Turn findings into an outline, then into a structured first draft in your chosen journal template.',
-    color: 'text-violet-500',
-    bg: 'bg-violet-50',
-  },
-  {
-    step: '03',
-    title: 'Code & experiment',
-    text: 'Write, run, and debug the code behind your results without leaving the project.',
-    color: 'text-sky-500',
-    bg: 'bg-sky-50',
-  },
-  {
-    step: '04',
-    title: 'Compile & polish',
-    text: 'Fix LaTeX errors automatically, tidy formatting, and export a submission-ready PDF.',
-    color: 'text-emerald-500',
-    bg: 'bg-emerald-50',
-  },
 ];
+
+/* ------------------------------------------------------------------ */
+/* Canvas-style Feature Cards                                         */
+/* ------------------------------------------------------------------ */
 
 const FEATURES = [
   {
-    icon: Search,
-    title: 'Literature search',
-    text: 'Search arXiv and OpenAlex from inside the editor and add references in one click.',
-    accent: 'group-hover:text-indigo-500',
-    bg: 'group-hover:bg-indigo-50',
+    icon: Zap,
+    accent: '#8789FF',
+    accentSoft: '#EEEEFF',
+    iconColor: '#4C4DBF',
+    title: 'Sub-second compilation & SyncTeX',
+    body: 'Local zero-queue engine compiles publication-quality PDFs in milliseconds. Click any word in code to jump to PDF, or click any rendered paragraph to jump to code.',
   },
   {
-    icon: PenLine,
-    title: 'Writing agent',
-    text: 'Draft, rewrite, and tighten sections while keeping your structure and citations intact.',
-    accent: 'group-hover:text-violet-500',
-    bg: 'group-hover:bg-violet-50',
+    icon: Search,
+    accent: '#82FFCF',
+    accentSoft: '#EAFFF6',
+    iconColor: '#1F6B4F',
+    title: 'Autonomous literature discovery',
+    body: 'Search millions of arXiv and OpenAlex papers directly within the editor. Pull verified BibTeX records, summarize key findings, and cite without switching context.',
+  },
+  {
+    icon: Sparkles,
+    accent: '#FF99E7',
+    accentSoft: '#FFEEFA',
+    iconColor: '#B03A8C',
+    title: 'Self-healing LaTeX doctor',
+    body: 'Never wrestle with cryptic TeX logs again. The built-in AI doctor diagnoses missing packages, syntax mistakes, and equation errors and fixes them with one click.',
   },
   {
     icon: Terminal,
-    title: 'Code agent',
-    text: 'Write and debug experiment code in a sandbox, then feed the results into your paper.',
-    accent: 'group-hover:text-sky-500',
-    bg: 'group-hover:bg-sky-50',
-  },
-  {
-    icon: Play,
-    title: 'Auto compile',
-    text: 'Every change compiles instantly. Errors are explained and fixed for you.',
-    accent: 'group-hover:text-emerald-500',
-    bg: 'group-hover:bg-emerald-50',
-  },
-  {
-    icon: Quote,
-    title: 'Smart citations',
-    text: 'Bibliographies are generated and kept consistent as you write.',
-    accent: 'group-hover:text-amber-500',
-    bg: 'group-hover:bg-amber-50',
+    accent: '#FFFD99',
+    accentSoft: '#FFFDE6',
+    iconColor: '#B58105',
+    title: 'Isolated code & experiment sandbox',
+    body: 'Run Python scripts, generate plots, and feed experimental numbers straight into your manuscript figures and tables without leaving the project.',
   },
   {
     icon: Users,
-    title: 'Real-time collaboration',
-    text: 'Co-author with your team, comment inline, and review changes together.',
-    accent: 'group-hover:text-rose-500',
-    bg: 'group-hover:bg-rose-50',
+    accent: '#8789FF',
+    accentSoft: '#EEEEFF',
+    iconColor: '#4C4DBF',
+    title: 'Built for research teams',
+    body: 'Real-time multi-user editing, Git-backed version history, and inline review comments allow co-authors to collaborate seamlessly on complex manuscripts.',
+  },
+  {
+    icon: LayoutDashboard,
+    accent: '#82FFCF',
+    accentSoft: '#EAFFF6',
+    iconColor: '#1F6B4F',
+    title: '40+ Journal-ready templates',
+    body: 'Start immediately with pre-configured templates for IEEE, ACM, Nature, NeurIPS, ICML, CVPR, and university dissertation guidelines.',
   },
 ];
 
-const TEMPLATES = [
-  {
-    id: 'academic',
-    badge: 'Journal',
-    title: 'Journal article',
-    text: 'IEEE, ACM, Springer and more, ready to submit.',
-    cta: 'Use template',
-    accent: 'border-indigo-200 hover:border-indigo-300',
-    badgeBg: 'bg-indigo-50 text-indigo-600',
-  },
-  {
-    id: 'beamer',
-    badge: 'Slides',
-    title: 'Conference slides',
-    text: 'Clean Beamer slides for talks and defenses.',
-    cta: 'Use template',
-    accent: 'border-violet-200 hover:border-violet-300',
-    badgeBg: 'bg-violet-50 text-violet-600',
-  },
-  {
-    id: 'resume',
-    badge: 'CV',
-    title: 'Academic CV',
-    text: 'A simple, well-structured CV or résumé.',
-    cta: 'Use template',
-    accent: 'border-sky-200 hover:border-sky-300',
-    badgeBg: 'bg-sky-50 text-sky-600',
-  },
-];
-
-const PLANS = [
-  {
-    name: 'Free',
-    note: 'For getting started',
-    items: ['Unlimited local projects', 'Visual and code editor', 'Bring your own AI key'],
-    cta: 'Get started',
-    to: '/project/default',
-    featured: false,
-  },
-  {
-    name: 'Individual',
-    note: 'For active researchers',
-    items: [
-      'Managed AI agents included',
-      'Cloud auto-save and project history',
-      'Real-time track changes',
-      'Advanced reference search',
-    ],
-    cta: 'View plans',
-    to: '/pricing',
-    featured: true,
-  },
-  {
-    name: 'Teams',
-    note: 'For labs and organizations',
-    items: ['Shared AI usage allowance', 'Single sign-on (SAML)', 'Self-hosted option', 'Priority support'],
-    cta: 'View plans',
-    to: '/pricing',
-    featured: false,
-  },
-];
-
-/* ------------------------------------------------------------------ */
-/* Small pieces                                                       */
-/* ------------------------------------------------------------------ */
-
-function Eyebrow({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="font-mono text-xs font-semibold uppercase tracking-widest text-brand">
-      {children}
-    </div>
-  );
-}
-
-function CodeLine({ line }: { line: string }) {
-  const isAdd = line.startsWith('+');
-  const isDel = line.startsWith('-');
-  return (
-    <div
-      className={`px-4 whitespace-pre ${isAdd ? 'bg-emerald-50 text-emerald-700' : isDel ? 'bg-rose-50 text-rose-600' : 'text-slate-600'
-        }`}
-    >
-      {line}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Page                                                               */
-/* ------------------------------------------------------------------ */
-
-export function LandingPage() {
-  const navigate = useNavigate();
-  const loadTemplate = useProjectStore((s) => s.loadTemplate);
-
-  const [email, setEmail] = useState('');
-  const [activeId, setActiveId] = useState<(typeof AGENT_DEMOS)[number]['id']>('discover');
-
-  const demo = AGENT_DEMOS.find((d) => d.id === activeId) ?? AGENT_DEMOS[0];
-
-  const launch = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    navigate('/project/default');
-  };
-
-  const useTemplate = (id: string) => {
-    loadTemplate(id);
-    navigate('/project/default');
-  };
+export const LandingPage: React.FC = () => {
+  const [activeDemoId, setActiveDemoId] = useState<string>('discover');
+  const activeDemo = AGENT_DEMOS.find((d) => d.id === activeDemoId) || AGENT_DEMOS[0];
 
   return (
-    <div className="flex w-full flex-col font-sans text-slate-800 selection:bg-brand/15">
-      {/* ------------------------- Hero ------------------------- */}
-      <section className="bg-hero-gradient relative overflow-hidden px-4 pb-20 pt-14 text-center sm:px-6 md:pt-20 lg:px-8">
-        {/* Subtle decorative orbs */}
-        <div className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full bg-brand/[0.04] blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-indigo-400/[0.05] blur-3xl" />
+    <div className="relative w-full overflow-hidden bg-white text-[#14161A] font-sans">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap');
 
-        <div className="relative mx-auto w-full max-w-6xl">
-          <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-brand/15 bg-white/70 backdrop-blur-sm px-3.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm shadow-brand/5">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand animate-pulse" />
-            AI research agents, built into your LaTeX editor
+        .landing-hero-h1 {
+          font-family: 'Fraunces', serif;
+          font-size: 4.4rem;
+          line-height: 1.08;
+          font-weight: 600;
+          letter-spacing: -0.03em;
+        }
+
+        .landing-hero-p {
+          font-size: 1.2rem;
+          line-height: 1.6;
+        }
+
+        @media (max-width: 900px) {
+          .landing-hero-h1 {
+            font-size: 3.2rem;
+            line-height: 1.12;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .landing-hero-h1 {
+            font-size: 2.35rem;
+            line-height: 1.15;
+          }
+          .landing-hero-p {
+            font-size: 1.05rem;
+          }
+        }
+      `}</style>
+
+      {/* Signature element: Soft blurred ambient bloom matching canvas */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -220,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 960,
+          height: 720,
+          filter: 'blur(75px)',
+          opacity: 0.55,
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      >
+        <div style={{ position: 'relative', width: '100%', height: '100%', mixBlendMode: 'multiply' as const }}>
+          <div style={{ position: 'absolute', left: '28%', top: '44%', width: 280, height: 280, borderRadius: '50%', background: '#FFFD99' }} />
+          <div style={{ position: 'absolute', left: '50%', top: '18%', width: 280, height: 280, borderRadius: '50%', background: '#82FFCF' }} />
+          <div style={{ position: 'absolute', left: '52%', top: '46%', width: 280, height: 280, borderRadius: '50%', background: '#8789FF' }} />
+          <div style={{ position: 'absolute', left: '28%', top: '18%', width: 280, height: 280, borderRadius: '50%', background: '#FF99E7' }} />
+        </div>
+      </div>
+
+      {/* Hero Section */}
+      <section className="relative z-10 flex flex-col items-center text-center max-w-[1050px] mx-auto pt-24 pb-16 px-5 sm:px-8">
+        {/* Eyebrow Badge */}
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#F5F5F7] text-[#14161A] text-xs font-semibold mb-8 border border-[#EFEFF2] shadow-2xs">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Local-First Scientific LaTeX Studio & AI Partner</span>
+        </div>
+
+        {/* Hero Headline */}
+        <h1 className="landing-hero-h1 text-[#14161A] mb-6 max-w-4xl">
+          Scientific writing, <br className="hidden sm:inline" />
+          at the speed of light.
+        </h1>
+
+        {/* Subtitle */}
+        <p className="landing-hero-p text-[#6B7280] max-w-[580px] mb-12">
+          An infinite, collaborative LaTeX workspace built for researchers who move fast. Sub-second compilation, bi-directional SyncTeX, and AI agents for literature discovery and drafting.
+        </p>
+
+        {/* Action Buttons (Canvas dark pill style) */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md">
+          <Link
+            to="/project/default"
+            className="hover:!bg-[#34345C] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+            style={{
+              background: '#14161A',
+              color: '#fff',
+              border: 'none',
+              padding: '16px 32px',
+              borderRadius: 30,
+              fontSize: '1.05rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              width: '100%',
+              textDecoration: 'none',
+            }}
+          >
+            <LayoutDashboard size={19} />
+            Enter Workspace
+          </Link>
+
+          <Link
+            to="/templates"
+            className="hover:!bg-[#F9FAFB] hover:!border-[#D5D7E2] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+            style={{
+              background: '#FFFFFF',
+              color: '#14161A',
+              border: '1px solid #EFEFF2',
+              padding: '16px 28px',
+              borderRadius: 30,
+              fontSize: '1.05rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 9,
+              width: '100%',
+              textDecoration: 'none',
+            }}
+          >
+            <LayoutTemplate size={18} className="text-[#6B7280]" />
+            40+ Templates
+          </Link>
+        </div>
+      </section>
+
+      {/* Product Screenshot Preview (Canvas framed preview) */}
+      <section className="relative z-10 flex justify-center px-4 sm:px-8 mb-28">
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 1200,
+            background: '#FFFFFF',
+            borderRadius: 24,
+            overflow: 'hidden',
+            boxShadow: '0 24px 60px -20px rgba(20,22,26,0.12)',
+            border: '1px solid #EFEFF2',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* macOS Window Title Bar */}
+          <div className="h-11 bg-[#FAFAFC] border-b border-[#EFEFF2] px-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-[#FF5F56]" />
+              <span className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
+              <span className="w-3 h-3 rounded-full bg-[#27C93F]" />
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-white border border-[#EFEFF2] text-xs text-[#6B7280]">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="font-medium text-[#14161A]">Surpassing_RealTime_Benchmarks.tex</span>
+              <span className="text-[#94A3B8]">• Compiled in 0.32s</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[#6B7280]">
+              <span className="px-2 py-0.5 rounded bg-[#EEEEFF] text-[#4C4DBF] font-semibold text-[11px]">SyncTeX Active</span>
+            </div>
           </div>
 
-          <h1 className="font-display mx-auto max-w-3xl text-4xl font-normal leading-[1.12] tracking-tight text-slate-900 sm:text-5xl md:text-6xl">
-            From base paper to final manuscript,{' '}
-            <span className="italic font-normal bg-gradient-to-r from-brand to-indigo-500 bg-clip-text text-transparent">
-              in one workspace
-            </span>
-          </h1>
-
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-slate-500 sm:text-lg">
-            ElseWhere is a collaborative LaTeX editor with agents that find papers, write sections, debug
-            your code, and compile automatically, so you can focus on the research.
-          </p>
-
-          <form
-            onSubmit={launch}
-            className="mx-auto mt-8 flex max-w-lg flex-col items-center gap-2.5 sm:flex-row"
-          >
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              className="w-full rounded-lg border border-brand/15 bg-white/80 backdrop-blur-sm px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:flex-1 shadow-sm transition-shadow hover:shadow-md"
-            />
-            <button
-              type="submit"
-              className="btn-glow flex w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand to-indigo-500 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-brand/20 transition-all hover:shadow-lg hover:shadow-brand/25 sm:w-auto group"
-            >
-              Start writing free
-              <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-            </button>
-          </form>
-          <p className="mt-3 text-xs text-slate-400">Free to start. No credit card required.</p>
-
-          {/* ------------------- Product preview ------------------- */}
-          <div className="animate-float mx-auto mt-14 max-w-5xl overflow-hidden rounded-2xl border border-brand/10 bg-white text-left shadow-[0_12px_48px_-12px_rgba(96,85,232,0.12)]">
-            {/* Window bar */}
-            <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-indigo-50/40 px-4 py-2.5">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-300/60" />
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-300/60" />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-300/60" />
+          {/* Realistic Studio IDE Mockup Pane */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[520px] bg-white">
+            {/* Left: Code Editor (7 cols) */}
+            <div className="lg:col-span-7 border-r border-[#EFEFF2] flex flex-col bg-white">
+              {/* Editor Tab Bar */}
+              <div className="h-9 bg-[#F9FAFB] border-b border-[#EFEFF2] px-3 flex items-center gap-2">
+                <div className="h-7 px-3 bg-white border-t-2 border-t-[#14161A] border-x border-[#EFEFF2] rounded-t text-xs font-semibold text-[#14161A] flex items-center gap-2">
+                  <FileText size={12} className="text-[#8789FF]" />
+                  <span>main.tex</span>
+                </div>
+                <div className="h-7 px-3 text-xs text-[#6B7280] flex items-center gap-2 hover:text-[#14161A] cursor-pointer">
+                  <span>references.bib</span>
+                </div>
+                <div className="h-7 px-3 text-xs text-[#6B7280] flex items-center gap-2 hover:text-[#14161A] cursor-pointer">
+                  <span>train.py</span>
+                </div>
               </div>
-              <span className="text-xs font-medium text-slate-500">ElseWhere Studio</span>
-              <span className="w-10" />
+
+              {/* Editor Code Content with Syntax Colors */}
+              <div className="p-5 font-mono text-[13px] leading-relaxed text-[#14161A] flex-1 overflow-x-auto select-none bg-[#FFFFFF]">
+                <div className="text-[#94A3B8] text-[11px] mb-3">// Academic Manuscript — IEEE 2-Column Template</div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">51</span>
+                  <span><span className="text-[#B03A8C] font-semibold">\section</span>{'{'}Methodology & Predictive Architecture{'}'}</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">52</span>
+                  <span className="text-[#6B7280]">Comparative analyses of the time delivery prediction have demonstrated that</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">53</span>
+                  <span>classical algorithms such as Random Forest, Gradient Boosting, as well as</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">54</span>
+                  <span>Extreme Gradient Boosting (<span className="text-[#4C4DBF] font-semibold">XGBoost</span>) can be utilized in modeling complex</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">55</span>
+                  <span>relationships between the delivery factors and delivery duration~<span className="text-[#1F6B4F] font-semibold">\cite</span>{'{'}jumper2021highly{'}'}.</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">56</span>
+                  <span className="text-[#94A3B8]">% SyncTeX bi-directional word anchor</span>
+                </div>
+                <div className="flex gap-4 bg-[#FFFDE6] -mx-5 px-5 py-0.5 rounded border-l-3 border-[#B58105]">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">57</span>
+                  <span>To move beyond black-box modeling, we employed <span className="bg-[#FFFD99] px-1 rounded font-semibold text-[#14161A]">SHAP</span> for feature explainability.</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">58</span>
+                  <span><span className="text-[#B03A8C] font-semibold">\begin</span>{'{'}equation{'}'}</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">59</span>
+                  <span className="pl-4 text-[#4C4DBF]">\phi_i(v) = \sum_{'{'}S \subseteq N \setminus \{'{'}i\{'}'}{'}'} \frac{'{'}|S|!(|N|-|S|-1)!{'}'}{'{'}|N|!{'}'} (v(S \cup \{'{'}i\{'}'}) - v(S))</span>
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-[#CBD5E1] select-none text-right w-6">60</span>
+                  <span><span className="text-[#B03A8C] font-semibold">\end</span>{'{'}equation{'}'}</span>
+                </div>
+              </div>
             </div>
 
-            {/* Agent tabs */}
-            <div className="flex gap-1 overflow-x-auto border-b border-slate-100 bg-white px-3 py-2">
-              {AGENT_DEMOS.map((d) => {
-                const Icon = d.icon;
-                const active = d.id === activeId;
-                return (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => setActiveId(d.id)}
-                    className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 ${active ? 'bg-brand/10 text-brand shadow-sm shadow-brand/10' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-                      }`}
-                  >
-                    <Icon size={13} />
-                    {d.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid min-h-[300px] grid-cols-1 divide-y divide-slate-100 md:grid-cols-2 md:divide-x md:divide-y-0">
-              {/* Agent conversation */}
-              <div className="space-y-4 bg-gradient-to-b from-slate-50/60 to-indigo-50/20 p-5">
-                <div className="ml-auto w-fit max-w-[90%] rounded-xl rounded-tr-sm border border-brand/10 bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-sm">
-                  {demo.prompt}
+            {/* Right: Rendered PDF Manuscript Preview (5 cols) */}
+            <div className="lg:col-span-5 bg-[#F9FAFB] p-5 flex flex-col items-center justify-center">
+              {/* PDF Sheet Simulation */}
+              <div className="w-full max-w-[380px] bg-white rounded shadow-[0_8px_30px_rgba(44,38,30,0.1)] border border-[#E5E7EB] p-5 text-[9px] leading-snug font-serif text-[#1F2937]">
+                <div className="text-center font-bold text-[11px] mb-1 tracking-tight text-[#111827]">
+                  Surpassing Real-Time Benchmarks: An Optimized Stacking Ensemble
+                </div>
+                <div className="text-center text-[7.5px] text-[#6B7280] mb-3">
+                  Sanjay Kumar, Venkatesh K. • Department of Computer Science & Engineering
                 </div>
 
-                <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="mb-1 text-xs font-semibold text-brand/60">Agent</div>
-                  {demo.steps.map((s) => (
-                    <div key={s} className="flex items-start gap-2 text-sm text-slate-600">
-                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                        <Check size={11} className="stroke-[3]" />
-                      </span>
-                      {s}
+                <div className="grid grid-cols-2 gap-3 text-justify">
+                  <div>
+                    <div className="font-bold text-[8.5px] uppercase tracking-wider mb-0.5 text-[#111827]">Abstract</div>
+                    <p className="text-[7.5px] text-[#4B5563] leading-tight mb-2">
+                      Proper prediction of food delivery time is key to customer satisfaction. We propose a stacked ensemble combining XGBoost, LightGBM, and Haversine geo-features.
+                    </p>
+                    <div className="font-bold text-[8.5px] uppercase tracking-wider mb-0.5 text-[#111827]">I. Introduction</div>
+                    <p className="text-[7.5px] text-[#4B5563] leading-tight">
+                      Delivery logistics rely on dynamic traffic conditions and spatial factors. Models achieve 98.4% predictive convergence on historical dispatch data.
+                    </p>
+                  </div>
+                  <div>
+                    <div className="font-bold text-[8.5px] uppercase tracking-wider mb-0.5 text-[#111827]">II. Feature Insights</div>
+                    <p className="text-[7.5px] text-[#4B5563] leading-tight mb-1.5">
+                      To understand non-linear interactions across features, we utilized additive Shapley values:
+                    </p>
+                    {/* Simulated Highlighting for SHAP */}
+                    <p className="text-[7.5px] text-[#4B5563] leading-tight bg-[#FFFD99]/70 px-1 py-0.5 rounded border border-[#EAB308]/40 shadow-2xs">
+                      The <span className="font-bold text-[#14161A]">SHAP</span> attribution plot illustrates that road traffic density and restaurant delay dominate final variance.
+                    </p>
+                    <div className="mt-2 text-center text-[7px] text-[#9CA3AF] border-t border-[#F3F4F6] pt-1">
+                      Fig. 1. Additive feature attributions (0.32s)
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Grid (Exact 3-col canvas design with pastel accent badges) */}
+      <section className="relative z-10 max-w-[1200px] mx-auto px-5 sm:px-8 mb-32">
+        <div className="text-center mb-16">
+          <h2
+            style={{
+              fontFamily: '"Fraunces", serif',
+              fontSize: '2.8rem',
+              fontWeight: 600,
+              letterSpacing: '-0.02em',
+              margin: '0 0 16px',
+              color: '#14161A',
+            }}
+          >
+            Engineered for scientific excellence.
+          </h2>
+          <p style={{ color: '#6B7280', fontSize: '1.15rem', maxWidth: 600, margin: '0 auto', lineHeight: 1.6 }}>
+            Everything required to research, write, and submit peer-reviewed manuscripts—without server bottlenecks or fragmented tools.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {FEATURES.map(({ icon: Icon, accentSoft, iconColor, title, body }) => (
+            <div
+              key={title}
+              style={{
+                background: '#FFFFFF',
+                borderRadius: 24,
+                border: '1px solid #EFEFF2',
+                boxShadow: '0 10px 40px -18px rgba(20,22,26,0.08)',
+                padding: 40,
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              className="hover:-translate-y-1 hover:shadow-[0_20px_50px_-20px_rgba(20,22,26,0.14)]"
+            >
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  background: accentSoft,
+                  borderRadius: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 24,
+                }}
+              >
+                <Icon size={22} color={iconColor} />
+              </div>
+              <h3
+                style={{
+                  fontFamily: '"Fraunces", serif',
+                  fontSize: '1.3rem',
+                  fontWeight: 600,
+                  margin: '0 0 12px',
+                  color: '#14161A',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {title}
+              </h3>
+              <p style={{ color: '#6B7280', lineHeight: 1.6, margin: 0, fontSize: '0.95rem' }}>{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Interactive Agent Intelligence Showcase */}
+      <section className="relative z-10 max-w-[1200px] mx-auto px-5 sm:px-8 mb-36">
+        <div
+          style={{
+            background: '#FAFAFC',
+            borderRadius: 32,
+            border: '1px solid #EFEFF2',
+            padding: '60px 40px',
+          }}
+          className="shadow-[0_20px_50px_-20px_rgba(20,22,26,0.06)]"
+        >
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white text-[#14161A] text-xs font-semibold mb-4 border border-[#EFEFF2]">
+              <Sparkles size={13} className="text-[#8789FF]" />
+              <span>Multi-Agent Research Intelligence</span>
+            </div>
+            <h2
+              style={{
+                fontFamily: '"Fraunces", serif',
+                fontSize: '2.5rem',
+                fontWeight: 600,
+                letterSpacing: '-0.02em',
+                color: '#14161A',
+                marginBottom: 12,
+              }}
+            >
+              Think and draft without friction.
+            </h2>
+            <p style={{ color: '#6B7280', fontSize: '1.05rem', lineHeight: 1.6 }}>
+              Specialized research subagents work alongside you directly inside the codebase. Select a workflow to see how they operate:
+            </p>
+          </div>
+
+          {/* Interactive Workflow Tabs */}
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-10">
+            {AGENT_DEMOS.map((demo) => {
+              const Icon = demo.icon;
+              const isActive = demo.id === activeDemoId;
+              return (
+                <button
+                  key={demo.id}
+                  onClick={() => setActiveDemoId(demo.id)}
+                  style={{
+                    background: isActive ? '#14161A' : '#FFFFFF',
+                    color: isActive ? '#FFFFFF' : '#14161A',
+                    border: '1px solid',
+                    borderColor: isActive ? '#14161A' : '#EFEFF2',
+                    padding: '10px 20px',
+                    borderRadius: 24,
+                    fontSize: '0.92rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s',
+                    boxShadow: isActive ? '0 4px 12px rgba(20,22,26,0.15)' : 'none',
+                  }}
+                >
+                  <Icon size={16} color={isActive ? '#FFFFFF' : demo.iconColor} />
+                  <span>{demo.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Demo Panel */}
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 24,
+              border: '1px solid #EFEFF2',
+              boxShadow: '0 10px 30px -10px rgba(20,22,26,0.06)',
+              overflow: 'hidden',
+            }}
+            className="grid grid-cols-1 lg:grid-cols-12"
+          >
+            {/* Left: Prompt & Execution steps */}
+            <div className="lg:col-span-5 p-8 border-b lg:border-b-0 lg:border-r border-[#EFEFF2] flex flex-col justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-[#94A3B8] mb-2 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Agent Task & Plan</span>
+                </div>
+                <div
+                  style={{
+                    fontFamily: '"Fraunces", serif',
+                    fontSize: '1.25rem',
+                    fontWeight: 600,
+                    color: '#14161A',
+                    lineHeight: 1.4,
+                    marginBottom: 24,
+                  }}
+                >
+                  &ldquo;{activeDemo.prompt}&rdquo;
+                </div>
+
+                <div className="space-y-3">
+                  {activeDemo.steps.map((step, idx) => (
+                    <div key={idx} className="flex items-start gap-3 text-xs leading-relaxed text-[#4B5563]">
+                      <div className="w-5 h-5 rounded-full bg-[#EAFFF6] text-[#1F6B4F] font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                        ✓
+                      </div>
+                      <span>{step}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Code / file view */}
-              <div className="flex flex-col bg-white">
-                <div className="flex items-center gap-1.5 border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
-                  <FileText size={13} className="text-brand/50" />
-                  <span className="font-mono">{demo.file}</span>
+              <div className="mt-8 pt-6 border-t border-[#EFEFF2] flex items-center justify-between">
+                <span className="text-xs text-[#94A3B8]">Target File: <strong className="text-[#14161A] font-mono">{activeDemo.file}</strong></span>
+                <span className="text-xs px-2.5 py-1 rounded-full bg-[#EEEEFF] text-[#4C4DBF] font-semibold">
+                  Autonomous
+                </span>
+              </div>
+            </div>
+
+            {/* Right: Code Diff / Generated Artifact */}
+            <div className="lg:col-span-7 bg-[#FAFAFC] p-6 flex flex-col justify-center">
+              <div className="bg-white rounded-xl border border-[#EFEFF2] p-5 shadow-2xs font-mono text-xs leading-relaxed text-[#14161A]">
+                <div className="text-[11px] text-[#94A3B8] pb-3 mb-3 border-b border-[#EFEFF2] flex items-center justify-between">
+                  <span>{activeDemo.file}</span>
+                  <span className="text-[10px] text-emerald-600 font-semibold">Verified Syntax</span>
                 </div>
-                <div className="flex-1 space-y-0.5 py-4 font-mono text-xs leading-6">
-                  {demo.code.map((line, i) => (
-                    <CodeLine key={`${demo.id}-${i}`} line={line} />
-                  ))}
-                </div>
-                <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Compiled successfully
-                  </span>
-                  <span>0.3s</span>
+                <div className="space-y-1">
+                  {activeDemo.code.map((line, k) => {
+                    const isAdd = line.startsWith('+');
+                    const isDel = line.startsWith('-');
+                    return (
+                      <div
+                        key={k}
+                        className={`px-2 py-0.5 rounded font-mono ${
+                          isAdd ? 'bg-[#EAFFF6] text-[#1F6B4F] font-medium' : isDel ? 'bg-[#FFEEFA] text-[#B03A8C] line-through' : 'text-[#334155]'
+                        }`}
+                      >
+                        {line}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -406,215 +646,86 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ------------------------ Workflow ----------------------- */}
-      <section className="bg-section-lavender border-y border-brand/8 px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl space-y-12">
-          <div className="max-w-2xl space-y-3">
-            <Eyebrow>How it works</Eyebrow>
-            <h2 className="text-3xl font-semibold tracking-tight text-slate-900">
-              One workflow for the whole research process
+      {/* Bottom CTA Banner (Framed with Ambient Bloom) */}
+      <section className="relative z-10 max-w-[1200px] mx-auto px-5 sm:px-8 mb-24">
+        <div
+          style={{
+            position: 'relative',
+            background: '#FFFFFF',
+            borderRadius: 32,
+            border: '1px solid #EFEFF2',
+            padding: '90px 40px',
+            textAlign: 'center',
+            overflow: 'hidden',
+          }}
+          className="shadow-[0_20px_50px_-20px_rgba(20,22,26,0.1)] flex flex-col items-center"
+        >
+          {/* Subtle Bloom glow inside card */}
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              top: -150,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 600,
+              height: 400,
+              filter: 'blur(70px)',
+              opacity: 0.45,
+              pointerEvents: 'none',
+              zIndex: 0,
+            }}
+          >
+            <div style={{ position: 'relative', width: '100%', height: '100%', mixBlendMode: 'multiply' as const }}>
+              <div style={{ position: 'absolute', left: '30%', top: '40%', width: 180, height: 180, borderRadius: '50%', background: '#FFFD99' }} />
+              <div style={{ position: 'absolute', left: '50%', top: '20%', width: 180, height: 180, borderRadius: '50%', background: '#82FFCF' }} />
+              <div style={{ position: 'absolute', left: '50%', top: '40%', width: 180, height: 180, borderRadius: '50%', background: '#8789FF' }} />
+              <div style={{ position: 'absolute', left: '30%', top: '20%', width: 180, height: 180, borderRadius: '50%', background: '#FF99E7' }} />
+            </div>
+          </div>
+
+          <div className="relative z-10 max-w-2xl mx-auto">
+            <h2
+              style={{
+                fontFamily: '"Fraunces", serif',
+                fontSize: '3.2rem',
+                fontWeight: 600,
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+                margin: '0 0 20px',
+                color: '#14161A',
+              }}
+            >
+              Think and create <br /> at the speed of light.
             </h2>
-            <p className="text-slate-500">
-              Stop switching between search tools, code editors, and LaTeX compilers. Agents work inside
-              your project and hand you results you can review and edit.
+            <p style={{ color: '#6B7280', fontSize: '1.2rem', lineHeight: 1.6, margin: '0 auto 40px' }}>
+              Join thousands of researchers drafting publications without compiler queues or formatting headaches.
             </p>
-          </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {WORKFLOW.map((w, i) => (
-              <div
-                key={w.step}
-                className="accent-bar-left animate-slide-up space-y-3 rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-sm p-5 transition-all duration-300 hover:shadow-lg hover:shadow-brand/5 hover:-translate-y-0.5"
-                style={{ animationDelay: `${i * 100}ms` }}
-              >
-                <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg ${w.bg} font-mono text-xs font-bold ${w.color}`}>
-                  {w.step}
-                </div>
-                <h3 className="text-base font-semibold text-slate-900">{w.title}</h3>
-                <p className="text-sm leading-relaxed text-slate-500">{w.text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------ Features ----------------------- */}
-      <section className="mx-auto w-full max-w-6xl space-y-12 px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-2xl space-y-3 text-center">
-          <Eyebrow>Features</Eyebrow>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900">
-            Everything you need to write and publish
-          </h2>
-          <p className="text-slate-500">
-            Native LaTeX with a visual editor, so beginners and experts can work in the same document.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-x-10 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f) => {
-            const Icon = f.icon;
-            return (
-              <div key={f.title} className="group space-y-2.5 rounded-xl p-4 -m-4 transition-all duration-300 hover:bg-slate-50/50">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-brand/8 text-brand transition-all duration-300 ${f.bg} ${f.accent}`}>
-                  <Icon size={19} />
-                </div>
-                <h3 className="text-base font-semibold text-slate-900">{f.title}</h3>
-                <p className="text-sm leading-relaxed text-slate-500">{f.text}</p>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 pt-2 text-sm text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <History size={14} className="text-brand" /> Full project history
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Check size={14} className="text-emerald-500" /> Visual and code editor
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Check size={14} className="text-emerald-500" /> Works on any device
-          </span>
-        </div>
-      </section>
-
-      {/* ----------------------- Templates ----------------------- */}
-      <section className="bg-section-sky border-y border-brand/8 px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl space-y-10">
-          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
-            <div className="space-y-3">
-              <Eyebrow>Templates</Eyebrow>
-              <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Start from a template</h2>
-              <p className="text-slate-500">Pick a format and begin writing in seconds.</p>
-            </div>
             <Link
-              to="/templates"
-              className="rounded-lg border border-brand/15 bg-white/80 backdrop-blur-sm px-4 py-2 text-sm font-medium text-slate-700 no-underline transition-all duration-200 hover:bg-white hover:shadow-sm hover:border-brand/25 group"
+              to="/project/default"
+              className="hover:!bg-[#34345C] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+              style={{
+                background: '#14161A',
+                color: '#fff',
+                border: 'none',
+                padding: '16px 36px',
+                borderRadius: 30,
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 12,
+                textDecoration: 'none',
+              }}
             >
-              Browse all templates
-              <ArrowRight size={13} className="inline ml-1.5 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {TEMPLATES.map((t, i) => (
-              <div
-                key={t.id}
-                className={`animate-slide-up flex flex-col justify-between gap-6 rounded-xl border ${t.accent} bg-white/80 backdrop-blur-sm p-6 transition-all duration-300 hover:shadow-lg hover:shadow-brand/5 hover:-translate-y-0.5`}
-                style={{ animationDelay: `${i * 80}ms` }}
-              >
-                <div className="space-y-2">
-                  <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${t.badgeBg}`}>
-                    {t.badge}
-                  </span>
-                  <h3 className="text-lg font-semibold text-slate-900">{t.title}</h3>
-                  <p className="text-sm text-slate-500">{t.text}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => useTemplate(t.id)}
-                  className="w-full cursor-pointer rounded-lg border border-brand/15 bg-brand/5 py-2 text-sm font-medium text-brand transition-all duration-200 hover:bg-brand/10 hover:border-brand/25"
-                >
-                  {t.cta}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------- Plans ------------------------- */}
-      <section className="mx-auto w-full max-w-6xl space-y-12 px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-2xl space-y-3 text-center">
-          <Eyebrow>Plans</Eyebrow>
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Simple plans for everyone</h2>
-          <p className="text-slate-500">Start for free and upgrade when you are ready.</p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          {PLANS.map((p) => (
-            <div
-              key={p.name}
-              className={`flex flex-col justify-between gap-8 rounded-xl border p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 ${p.featured
-                  ? 'border-brand/30 bg-gradient-to-b from-brand/[0.04] to-indigo-500/[0.02] shadow-sm shadow-brand/5 hover:shadow-brand/10'
-                  : 'border-slate-200 bg-white hover:border-brand/15 hover:shadow-brand/5'
-                }`}
-            >
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                    {p.name}
-                    {p.featured && (
-                      <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-brand/10 text-brand">
-                        Popular
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-sm text-slate-500">{p.note}</p>
-                </div>
-                <ul className="list-none space-y-2.5 p-0 text-sm text-slate-600">
-                  {p.items.map((item) => (
-                    <li key={item} className="flex items-start gap-2">
-                      <Check size={15} className="mt-0.5 shrink-0 text-emerald-500" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <Link
-                to={p.to}
-                className={`block w-full rounded-lg py-2.5 text-center text-sm font-semibold no-underline transition-all duration-200 ${p.featured
-                    ? 'btn-glow bg-gradient-to-r from-brand to-indigo-500 text-white hover:shadow-md hover:shadow-brand/20'
-                    : 'border border-brand/15 bg-brand/5 text-brand hover:bg-brand/10'
-                  }`}
-              >
-                {p.cta}
-              </Link>
-            </div>
-          ))}
-        </div>
-
-        <p className="text-center text-sm text-slate-500">
-          Need something for your institution?{' '}
-          <a href="mailto:sales@elsewhere.latex" className="font-medium text-brand hover:underline">
-            Talk to sales
-          </a>
-        </p>
-      </section>
-
-      {/* -------------------------- CTA -------------------------- */}
-      <section className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
-        <div className="relative overflow-hidden space-y-6 rounded-2xl border border-brand/15 bg-gradient-to-br from-brand/[0.04] via-indigo-50/40 to-violet-50/30 px-6 py-14 text-center sm:px-12">
-          {/* Decorative accent */}
-          <div className="pointer-events-none absolute top-0 right-0 h-48 w-48 rounded-full bg-brand/[0.04] blur-3xl" />
-          <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-36 rounded-full bg-indigo-400/[0.05] blur-3xl" />
-
-          <h2 className="relative text-3xl font-semibold tracking-tight text-slate-900">
-            Your next paper starts here
-          </h2>
-          <p className="relative mx-auto max-w-lg text-slate-500">
-            Open a project, describe your topic, and let the agents handle the groundwork.
-          </p>
-          <div className="relative flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => launch()}
-              className="btn-glow w-full cursor-pointer rounded-lg bg-gradient-to-r from-brand to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-brand/20 transition-all hover:shadow-lg hover:shadow-brand/25 sm:w-auto group"
-            >
-              Start writing free
-              <ArrowRight size={14} className="inline ml-1.5 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-            <Link
-              to="/pricing"
-              className="w-full rounded-lg border border-brand/15 bg-white/80 backdrop-blur-sm px-6 py-3 text-sm font-semibold text-slate-700 no-underline transition-all duration-200 hover:bg-white hover:shadow-sm sm:w-auto"
-            >
-              View plans
+              <LayoutDashboard size={20} />
+              Enter Workspace
             </Link>
           </div>
         </div>
       </section>
     </div>
   );
-}
-
-export default LandingPage;
+};

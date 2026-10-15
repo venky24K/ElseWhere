@@ -7,9 +7,14 @@ body {
 
 /* Editorial display font for high-impact scientific titles */
 .font-display {
-  font-family: 'Newsreader', 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-family: 'Fraunces', 'Newsreader', Georgia, 'Times New Roman', serif;
   font-optical-sizing: auto;
   letter-spacing: -0.02em;
+}
+
+.font-fraunces {
+  font-family: 'Fraunces', serif;
+  font-optical-sizing: auto;
 }
 
 @theme {
