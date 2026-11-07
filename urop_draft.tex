@@ -1,0 +1,202 @@
+% !TEX program = xelatex
+% Compile with XeLaTeX or LuaLaTeX:  xelatex urop.tex  (run twice)
+% Needs logo.png (SRM University-AP emblem) in the same folder.
+\documentclass[12pt,a4paper,twoside]{article}
+
+%% ------------------------------------------------------------------
+%% Page geometry  (Word: A4, 1" margins, footer 708 twips ~ 0.49")
+%% ------------------------------------------------------------------
+\usepackage[a4paper,top=1in,bottom=1in,left=1in,right=1in,
+            footskip=0.31in,headheight=14pt,nohead]{geometry}
+
+%% ------------------------------------------------------------------
+%% Fonts: Book Antiqua (Word's Normal style), 12 pt.
+%% Falls back to TeX Gyre Pagella (a Palatino clone, metrically the
+%% closest free match) if Book Antiqua is not installed.
+%% ------------------------------------------------------------------
+\usepackage{fontspec}
+\IfFontExistsTF{Book Antiqua}{%
+  \setmainfont{Book Antiqua}%
+}{%
+  \setmainfont{TeX Gyre Pagella}%
+}
+\usepackage{microtype}
+
+%% ------------------------------------------------------------------
+%% Paragraph formatting (Word defaults: spacing after = 8 pt,
+%% line spacing = 1.08 multiple, no first-line indent)
+%% ------------------------------------------------------------------
+\usepackage{setspace}
+\setstretch{1.08}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{8pt}
+\raggedbottom
+\hyphenpenalty=10000 \exhyphenpenalty=10000 % Word does not auto-hyphenate
+\tolerance=9999 \emergencystretch=3em
+
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+
+%% ------------------------------------------------------------------
+%% Footer: Word shows the roman page number, right aligned, on even
+%% pages only (even/odd footers are enabled in the file).
+%% ------------------------------------------------------------------
+\fancypagestyle{frontmatter}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \fancyfoot[RE]{\thepage}%
+}
+\fancypagestyle{nonumber}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+}
+\pagestyle{frontmatter}
+\pagenumbering{roman}
+
+%% ------------------------------------------------------------------
+%% Helper macros
+%% ------------------------------------------------------------------
+% An empty Word paragraph (one blank line + the 8 pt "space after")
+\newcommand{\emptypara}{\mbox{}\par}
+
+% Word "Heading 1": 18 pt bold, left aligned, keep with next, space after 0
+\newcommand{\hone}[1]{%
+  \begingroup\setlength{\parskip}{0pt}%
+  {\fontsize{18pt}{21.6pt}\selectfont\bfseries #1}\par\nopagebreak
+  \endgroup}
+
+% Numbered main section headings (List Paragraph, 18 pt, bold number)
+\newcommand{\numhead}[3]{%
+  \begingroup\setlength{\parskip}{0pt}%
+  \noindent\hspace*{0.25in}\makebox[0.25in][l]{\fontsize{18pt}{21.6pt}\selectfont\bfseries #1.}%
+  {\fontsize{18pt}{21.6pt}\selectfont\bfseries #2}{\fontsize{18pt}{21.6pt}\selectfont #3}\par
+  \endgroup}
+
+% Table-of-contents line with dot leader (right tab at text width)
+\newcommand{\tocdots}{\leaders\hbox to 5pt{\hss.\hss}\hfill}
+\newcommand{\tocrow}[2]{\noindent #1\tocdots\,#2\par}
+
+% Allow a line break after an underscore (reference 2)
+\newcommand{\us}{\_\allowbreak{}}
+
+\begin{document}
+
+%% ==================================================================
+%%  TITLE PAGE
+%% ==================================================================
+\thispagestyle{nonumber}
+{\centering
+{\fontsize{16pt}{19.2pt}\selectfont\bfseries Title of the Project}\par
+\emptypara
+UROP Project submitted to the\par
+SRM University -- AP, Andhra Pradesh\par
+for the partial fulfillment of the requirements to award the degree of\par
+\emptypara
+\textbf{Bachelor of Technology\\ in}\par
+\textbf{Computer Science and Engineering}\par
+\textbf{School of Engineering and Sciences}\par
+\emptypara
+Submitted by\par
+\vspace{8pt}
+{\setlength{\parskip}{0pt}%
+\textbf{Student Name | AP21110010489}\\
+\textbf{Student Name | AP21110010488}\par
+\textbf{Student Name | AP21110010490}\par}
+\vspace{-8pt}% Word: these two paragraphs have space-after = 0
+\emptypara
+\includegraphics[width=4.287cm]{logo.png}\par % 1543507 EMU = 4.287 cm square, as in the .docx
+Under the Guidance of\par
+\textbf{Dr.\ Mentor Name}\par
+}
+\noindent\hspace*{2.5in}\textbf{SRM University--AP}\par % Word: left indent 2" + first-line 0.5"
+{\centering
+\textbf{Neerukonda, Mangalagiri,}\par
+\textbf{Guntur Andhra Pradesh -- 522\,240}\par
+\textbf{November, 2026}\par
+}
+
+%% ==================================================================
+%%  ACKNOWLEDGEMENTS
+%% ==================================================================
+\newpage
+\hone{Acknowledgements:}
+\emptypara
+\begin{sloppypar}
+\noindent I would like to thank \textbf{Dr.\ Mentor Name} for his guidance and support given to us while working on this project. The way our mentor helped us whenever we needed his with patience and the motivation, he gave us during the time has pushed us to complete the research on time. His confidence in our team has boosted our confidence to complete the research while there are various other subject-related works and submissions. We also thank each of our team members for always being each other's constant support and for always helping each other out.\par
+\end{sloppypar}
+
+%% ==================================================================
+%%  TABLE OF CONTENTS  (hand-typed in the .docx, so hand-typed here)
+%% ==================================================================
+\newpage
+\hone{Table of Contents}
+{\raggedright\setlength{\parskip}{5pt}% TOC 1: space after = 5 pt
+\tocrow{Certificate}{i}
+\tocrow{Acknowledgements}{iii}
+\tocrow{Table of Contents}{v}
+\tocrow{Abstract}{vii}
+\tocrow{Abbreviations}{ix}
+\tocrow{List of Figures}{xi}
+\tocrow{\makebox[24pt][l]{1.}Introduction}{}
+\tocrow{\makebox[24pt][l]{2.}Device to Device Communication}{}
+{\small% TOC 2/3 style entries are 11 pt
+\noindent\hspace*{8pt}\makebox[36pt][l]{2.1}All about D2D\tocdots\,\par
+\noindent\hspace*{8pt}2.2.~~~~~~~Inband D2D\tocdots\,\par
+\noindent\hspace*{8pt}2.3.~~~~~~~Outband D2D\tocdots\,\par}
+\tocrow{\makebox[24pt][l]{3.}Energy Efficiency}{}
+\tocrow{\makebox[24pt][l]{4.}{\fontsize{13pt}{15.6pt}\selectfont Transmit Power Control}}{}
+{\small\noindent\hspace*{8pt}4.1.~~A transmit power control scheme for underlay D2D communication based on a DNN~\par}
+\tocrow{\makebox[24pt][l]{5.}{\fontsize{13pt}{15.6pt}\selectfont Simulations}}{}
+\tocrow{\makebox[24pt][l]{6.}Concluding Remarks}{}
+\tocrow{\makebox[24pt][l]{7.}{\fontsize{13pt}{15.6pt}\selectfont Future Works}}{}
+\tocrow{References}{}
+}
+
+%% ==================================================================
+%%  1. INTRODUCTION / 2. LITERATURE SURVEY / 3. SYSTEM MODEL
+%%  (each section sits on its own page in the .docx)
+%% ==================================================================
+\newpage
+\numhead{1}{Introduction}{:}
+\emptypara\emptypara\emptypara
+
+\newpage
+\thispagestyle{nonumber}
+\numhead{2}{Literature Survey}{}
+
+\newpage
+\pagestyle{nonumber}
+\numhead{3}{System Model}{}
+
+%% ==================================================================
+%%  CONCLUDING REMARKS
+%% ==================================================================
+\newpage
+\hone{Concluding Remarks:}
+% Word "Normal (Web)" paragraph: single spacing, 14 pt auto-spacing before/after
+{\setstretch{1.0}\setlength{\parskip}{14pt}\vspace{14pt}%
+\noindent The transmit power control strategy for arbitrary channel conditions. Through simulations, we assessed the performance of the proposed scheme and found that the proposed scheme can efficiently exploit the trade-off between the SE of DUE and CUE interference, allowing it to achieve higher performance than conventional schemes with a lower computation time.\par}
+
+%% ==================================================================
+%%  FUTURE WORK
+%% ==================================================================
+\newpage
+\hone{Future Work:}
+\noindent We have examined the literature that is currently available on D2D communications in cellular networks and worked on transmit power control strategy . In this section, we'll highlight some crucial elements like typical assumptions, the extent of the work, and standard methods.\par
+
+%% ==================================================================
+%%  REFERENCES
+%% ==================================================================
+\newpage
+\hone{References}
+\begin{enumerate}[leftmargin=0.5in,labelindent=0pt,labelwidth=0.25in,labelsep=0pt,
+                  itemsep=0pt,parsep=0pt,topsep=0pt,partopsep=0pt,align=left]
+\item Asadi, Wang, Mancuso - 2014 - A survey on device-to-device communication in cellular networks
+\item Transmit\us Power\us Control\us Using\us Deep\us Neural\us Network\us for\us Underlay\us Device-to-Device\us Communication
+\item X. Xiao, X. Tao, and J. Lu, ``A QoS-aware power optimization scheme in OFDMA systems with integrated device-to-device (D2D)communications,'' in Proceedings of IEEE VTC-Fall, 2011, pp.~1--5
+\item N. Lee, X. Lin, J. G. Andrews, and R. W. Heath, ``Power control for D2D underlaid cellular networks: Modeling, algorithms, and analysis,'' IEEE J. Sel. Areas Commun., vol.~33, no.~1, pp.~1--13, Jan.\ 2015
+\item Y. Wu, J. Wang, L. Qian, and R. Schober, ``Optimal power control for energy efficient D2D communication and its distributed implementation,'' IEEE Commun. Lett., vol.~19, no.~5, pp.~815--818, May 2015
+\end{enumerate}
+
+\end{document}
