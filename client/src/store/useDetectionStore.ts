@@ -8,6 +8,8 @@ export interface DetectionFlag extends SentenceEvaluation {
   startColumn?: number;
   endLineNumber?: number;
   endColumn?: number;
+  /** The user applied an edit to this sentence. Its score is unknown until the next scan. */
+  resolved?: boolean;
 }
 
 interface DetectionState {
@@ -18,6 +20,8 @@ interface DetectionState {
   activeFlagIndex: number;
   showHighlightsInEditor: boolean;
   filterAiOnly: boolean;
+  /** Edits applied since the last scan. When > 0 the displayed score is out of date. */
+  appliedCount: number;
 
   // Actions
   setIsScanning: (scanning: boolean) => void;
@@ -31,7 +35,7 @@ interface DetectionState {
   prevFlag: (jumpToLine?: (line: number) => void) => void;
   goToFlag: (index: number, jumpToLine?: (line: number) => void) => void;
   resolveFlag: (flagIndex: number, newSentence: string) => void;
-  setFlagRewrite: (flagIndex: number, rewrite: string) => void;
+  setFlagRewrite: (flagIndex: number, rewrite: string, verified?: boolean) => void;
   setShowHighlightsInEditor: (show: boolean) => void;
   setFilterAiOnly: (aiOnly: boolean) => void;
   clearDetection: () => void;
@@ -105,6 +109,7 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
   activeFlagIndex: 0,
   showHighlightsInEditor: true,
   filterAiOnly: true,
+  appliedCount: 0,
 
   setIsScanning: (isScanning) => set({ isScanning }),
 
@@ -115,6 +120,7 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
         scanFilePath: null,
         flags: [],
         activeFlagIndex: 0,
+        appliedCount: 0,
       });
       return;
     }
@@ -148,6 +154,7 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
       activeFlagIndex: initialActive,
       showHighlightsInEditor: true,
       isScanning: false,
+      appliedCount: 0,
     });
   },
 
@@ -206,55 +213,39 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
     }
   },
 
+  // Marks a flag as handled after its edit actually landed in the file. This deliberately does
+  // NOT change the document score: nothing has re-checked the new text, so the honest state is
+  // "score from the last scan, N edits applied since". The next scan produces a real number.
   resolveFlag: (flagIndex, newSentence) => {
-    const { flags, detectResult } = get();
-    const nextFlags = flags.map((f) => {
-      if (f.index === flagIndex) {
-        return {
-          ...f,
-          sentence: newSentence,
-          status: 'likely_human' as const,
-          score: 100,
-          reasons: [],
-          suggestedRewrite: undefined,
-          wordReplacements: undefined,
-        };
-      }
-      return f;
-    });
+    const { flags, appliedCount } = get();
+    const target = flags.find((f) => f.index === flagIndex);
+    if (!target || target.resolved) return;
 
-    const flaggedLeft = nextFlags.filter((f) => f.status !== 'likely_human');
-    // BUG-3 FIX: Never force humanScore to 100 just because all heuristic flags are resolved.
-    // The LLM may have given a legitimately lower score. Use the actual per-flag average,
-    // but cap the incremental improvement: each resolved flag can only push the score toward
-    // the LLM ceiling, not past it.
-    const avgScore = nextFlags.length > 0
-      ? Math.round(nextFlags.reduce((acc, curr) => acc + curr.score, 0) / nextFlags.length)
-      : (detectResult?.humanScore ?? 100);
-    const newHumanScore = Math.max(detectResult?.humanScore ?? 0, Math.min(avgScore, 100));
+    const nextFlags = flags.map((f) =>
+      f.index === flagIndex
+        ? {
+            ...f,
+            sentence: newSentence,
+            status: 'likely_human' as const,
+            resolved: true,
+            suggestedRewrite: undefined,
+            rewriteVerified: undefined,
+            wordReplacements: undefined,
+          }
+        : f
+    );
 
-    const updatedResult = detectResult
-      ? {
-          ...detectResult,
-          humanScore: newHumanScore,
-          aiScore: 100 - newHumanScore,
-          verdict: newHumanScore >= 80 ? ('Human Written' as const) : newHumanScore >= 60 ? ('Mixed / Edited' as const) : ('Likely Synthetic AI' as const),
-          summary: flaggedLeft.length === 0
-            ? 'All flagged sentences have been resolved and humanized. Authentic academic cadence.'
-            : detectResult.summary,
-        }
-      : null;
-
-    set({ flags: nextFlags, detectResult: updatedResult });
+    set({ flags: nextFlags, appliedCount: appliedCount + 1 });
   },
 
-  setFlagRewrite: (flagIndex, rewrite) => {
+  setFlagRewrite: (flagIndex, rewrite, verified = false) => {
     const { flags } = get();
     const nextFlags = flags.map((f) => {
       if (f.index === flagIndex) {
         return {
           ...f,
           suggestedRewrite: rewrite,
+          rewriteVerified: verified,
         };
       }
       return f;
@@ -274,5 +265,6 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
       flags: [],
       activeFlagIndex: 0,
       showHighlightsInEditor: false,
+      appliedCount: 0,
     }),
 }));

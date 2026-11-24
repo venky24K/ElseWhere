@@ -90,6 +90,7 @@ export const HumanizerDetectorView: React.FC = () => {
     scanFilePath,
     resolveFlag,
     setFlagRewrite,
+    appliedCount,
   } = useDetectionStore();
 
   const fileContent = files[activeFilePath]?.content || '';
@@ -112,7 +113,8 @@ export const HumanizerDetectorView: React.FC = () => {
   const [applied, flashApplied] = useFlash(2500);
 
   // ---------- derived detector data ----------
-  const aiFlags = useMemo(() => flags.filter((f) => f.status !== 'likely_human'), [flags]);
+  const aiFlags = useMemo(() => flags.filter((f) => f.status !== 'likely_human' && !f.resolved), [flags]);
+  const resolvedCount = useMemo(() => flags.filter((f) => f.resolved).length, [flags]);
   const humanCount = flags.length - aiFlags.length;
   const eligibleFlags = filterAiOnly ? aiFlags : flags;
   // Derive the focused flag from the *filtered* list so the card, counter and
@@ -195,35 +197,39 @@ export const HumanizerDetectorView: React.FC = () => {
 
   const [cardRewriting, setCardRewriting] = useState(false);
 
-  // Directly apply a replacement to the document and resolve the flag
-  const handleDirectApply = (original: string, replacement: string, flagIndex?: number) => {
-    // 1. Robust multiline/whitespace-agnostic text replacement in the project store
+  // Apply a replacement to the document. The flag is only marked handled when the
+  // sentence was actually found and replaced; otherwise the user sees an error.
+  const handleDirectApply = (original: string, replacement: string, flagIndex?: number): boolean => {
     const curContent = files[activeFilePath]?.content || '';
     const res = replaceSentenceInText(curContent, original, replacement);
 
-    if (res.replaced) {
-      updateFileContent(activeFilePath, res.newContent);
-    } else {
-      console.warn('[handleDirectApply] Could not locate sentence in file content:', original);
+    if (!res.replaced) {
+      setError(
+        'Could not find that sentence in the file (it may have been edited since the scan). Nothing was changed. Scan again to refresh.'
+      );
+      return false;
     }
 
-    // 2. Dispatch custom event for Monaco editor to update its range and undo stack
+    setError(null);
+    updateFileContent(activeFilePath, res.newContent);
+
+    // Let Monaco mirror the edit so it lands on its undo stack. No flagIndex here: the
+    // flag is resolved exactly once, below.
     window.dispatchEvent(
       new CustomEvent('elsewhere-apply-editor-edit', {
         detail: {
           filePath: activeFilePath,
           originalText: original,
           replacementText: replacement,
-          flagIndex,
         },
       })
     );
 
-    // 3. Mark flag as resolved in detection store
     if (flagIndex !== undefined) {
       resolveFlag(flagIndex, replacement);
     }
     flashApplied();
+    return true;
   };
 
   const handleApplyWordReplacement = (
@@ -269,7 +275,9 @@ export const HumanizerDetectorView: React.FC = () => {
         academicStyle: 'standard',
       });
       if (res?.humanizedText) {
-        setFlagRewrite(flag.index, res.humanizedText);
+        // The humanizer re-scores its own output with the detector; treat it as checked only
+        // if that score lands in the "human" band.
+        setFlagRewrite(flag.index, res.humanizedText, res.originalityScore >= 75);
       }
     } catch (err) {
       setError(`Quick AI rewrite failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -417,13 +425,35 @@ export const HumanizerDetectorView: React.FC = () => {
                 <section className="rounded-lg border border-border-subtle bg-card p-3">
                   <div className="flex items-baseline justify-between gap-3">
                     <div className="flex items-baseline gap-2">
-                      <span className={`text-2xl font-semibold tabular-nums ${scoreColor(detectResult.humanScore)}`}>
+                      <span
+                        className={`text-2xl font-semibold tabular-nums ${appliedCount > 0 ? 'text-text-muted' : scoreColor(detectResult.humanScore)}`}
+                      >
                         {detectResult.humanScore}%
                       </span>
                       <span className="text-text-muted">human</span>
                     </div>
                     <span className="truncate text-text-secondary">{detectResult.verdict}</span>
                   </div>
+
+                  {appliedCount > 0 && (
+                    <p className="m-0 mt-2 flex items-start gap-1.5 text-amber-400">
+                      <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                      <span>
+                        Score is from the last scan. {appliedCount} edit{appliedCount === 1 ? '' : 's'} applied since;
+                        scan again to measure the new text.
+                      </span>
+                    </p>
+                  )}
+
+                  {detectResult.llmPassesRequested !== undefined && (
+                    <p className="m-0 mt-1 text-text-muted">
+                      {detectResult.llmPasses
+                        ? `AI review: combined ${detectResult.llmPasses} independent check${detectResult.llmPasses === 1 ? '' : 's'}.`
+                        : detectResult.llmPassesRequested
+                        ? 'AI review failed; this score uses simple phrase checks only. See the server log.'
+                        : null}
+                    </p>
+                  )}
 
                   {/* Sentence split bar */}
                   <div
@@ -439,6 +469,9 @@ export const HumanizerDetectorView: React.FC = () => {
                       <dt>Flagged</dt>
                       <dd className="m-0 font-medium tabular-nums text-text-primary">
                         {aiFlags.length} of {flags.length}
+                        {resolvedCount > 0 && (
+                          <span className="font-normal text-text-muted"> · {resolvedCount} edited</span>
+                        )}
                       </dd>
                     </div>
                     <div>
@@ -528,14 +561,18 @@ export const HumanizerDetectorView: React.FC = () => {
 
                   {currentFlag ? (
                     (() => {
-                      const s = STATUS[currentFlag.status as keyof typeof STATUS] ?? STATUS.mixed;
+                      const s = currentFlag.resolved
+                        ? { ...STATUS.likely_human, text: 'text-text-secondary', box: 'border-border-subtle bg-sidebar/60' }
+                        : STATUS[currentFlag.status as keyof typeof STATUS] ?? STATUS.mixed;
                       return (
                         <div className={`flex flex-col gap-2.5 rounded-md border p-3 ${s.box}`}>
                           <div className="flex items-center justify-between">
                             <span className={`flex items-center gap-1.5 font-medium ${s.text}`}>
                               <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-                              {s.label}
-                              <span className="font-normal text-text-muted">· {currentFlag.score}% human</span>
+                              {currentFlag.resolved ? 'Edited' : s.label}
+                              <span className="font-normal text-text-muted">
+                                {currentFlag.resolved ? '· not re-checked yet' : `· ${currentFlag.score}% human`}
+                              </span>
                             </span>
                             {currentFlag.lineNumber && (
                               <span className="text-text-muted">Line {currentFlag.lineNumber}</span>
@@ -581,6 +618,16 @@ export const HumanizerDetectorView: React.FC = () => {
                               <div className="flex items-center gap-1 font-medium text-brand">
                                 <Sparkles size={12} />
                                 <span>Suggested rewrite</span>
+                                <span
+                                  className={`ml-auto font-normal ${currentFlag.rewriteVerified ? 'text-emerald-400' : 'text-text-muted'}`}
+                                  title={
+                                    currentFlag.rewriteVerified
+                                      ? 'This rewrite was scanned by the detector and not flagged'
+                                      : 'This rewrite has not passed a detector check'
+                                  }
+                                >
+                                  {currentFlag.rewriteVerified ? 'Passed re-check' : 'Not re-checked'}
+                                </span>
                               </div>
                               <p className="m-0 text-[12px] leading-relaxed text-text-primary">
                                 {currentFlag.suggestedRewrite}

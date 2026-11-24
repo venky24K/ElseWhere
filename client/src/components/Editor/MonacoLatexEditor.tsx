@@ -259,9 +259,11 @@ export const MonacoLatexEditor: React.FC = () => {
         console.warn('[applyReplacementToEditor] Sentence could not be matched in content:', sentence);
       }
 
-      if (flagIndex !== undefined) {
+      // Only mark the flag handled if the file really changed.
+      if (res.replaced && flagIndex !== undefined) {
         useDetectionStore.getState().resolveFlag(flagIndex, replacement);
       }
+      return res.replaced;
     },
     [activeFilePath]
   );
