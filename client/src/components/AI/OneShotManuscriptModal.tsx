@@ -25,7 +25,7 @@ export const OneShotManuscriptModal: React.FC<OneShotManuscriptModalProps> = ({
   onClose,
 }) => {
   const navigate = useNavigate();
-  const { provider, groqKey, geminiKey, selectedModel } = useAiStore();
+  const { provider, selectedModel, getActiveKey, getActiveBaseUrl } = useAiStore();
   const { createProject, updateFileContent, setProjectName, compileNow } = useProjectStore();
 
   const [topic, setTopic] = useState('');
@@ -38,7 +38,8 @@ export const OneShotManuscriptModal: React.FC<OneShotManuscriptModalProps> = ({
 
   if (!isOpen) return null;
 
-  const apiKey = provider === 'groq' ? groqKey : geminiKey;
+  const apiKey = getActiveKey();
+  const baseUrl = getActiveBaseUrl();
 
   const stages = [
     'Decomposing research goal & querying academic literature (OpenAlex / arXiv)...',
@@ -71,6 +72,7 @@ export const OneShotManuscriptModal: React.FC<OneShotManuscriptModalProps> = ({
         venue,
         model: selectedModel,
         apiKey: apiKey || undefined,
+        baseUrl,
         provider,
       });
 

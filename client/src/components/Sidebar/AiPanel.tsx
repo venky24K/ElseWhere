@@ -571,12 +571,21 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
   };
 
   const modelShortName = selectedModel
-    ? (selectedModel.includes('/') ? selectedModel.split('/')[1] : selectedModel.replace('gemini-', ''))
+    ? (selectedModel.includes('/')
+        ? selectedModel.split('/')[1]
+        : selectedModel.replace('gemini-', '').replace('claude-', ''))
     : 'AI';
 
-  const chatPlaceholder = provider === 'groq'
-    ? `Ask Groq LPU (${modelShortName}) (Enter to send, Shift+Enter for newline)...`
-    : `Ask Google Gemini (${modelShortName}) (Enter to send, Shift+Enter for newline)...`;
+  const providerName =
+    provider === 'groq'
+      ? 'Groq LPU'
+      : provider === 'gemini'
+      ? 'Google Gemini'
+      : provider === 'anthropic'
+      ? 'Claude'
+      : 'Ollama';
+
+  const chatPlaceholder = `Ask ${providerName} (${modelShortName}) (Enter to send, Shift+Enter for newline)...`;
 
   return (
     <div className="flex flex-col h-full bg-sidebar overflow-hidden select-none">
@@ -941,7 +950,7 @@ export const AiPanel: React.FC<AiPanelProps> = ({ forcedMode = 'agent' }) => {
                   }`}
                 >
                   <div className="text-[10px] opacity-70 mb-1 font-semibold flex items-center gap-1">
-                    <span>{msg.role === 'user' ? 'You' : provider === 'groq' ? 'Groq LPU' : 'Gemini'}</span>
+                    <span>{msg.role === 'user' ? 'You' : providerName}</span>
                     {msg.role !== 'user' && (
                       <span className="font-mono text-[9px] opacity-60">({modelShortName})</span>
                     )}

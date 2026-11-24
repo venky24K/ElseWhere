@@ -138,7 +138,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         files,
         activeFile,
         model: aiStore.selectedModel,
-        apiKey: aiStore.provider === 'groq' ? aiStore.groqKey : aiStore.geminiKey,
+        apiKey: aiStore.getActiveKey() || undefined,
+        baseUrl: aiStore.getActiveBaseUrl(),
         provider: aiStore.provider,
       });
 
@@ -221,7 +222,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           messages,
           tools: LATEXER_AGENT_TOOLS,
           model: aiStore.selectedModel,
-          apiKey: aiStore.provider === 'groq' ? aiStore.groqKey : aiStore.geminiKey,
+          apiKey: aiStore.getActiveKey() || undefined,
+          baseUrl: aiStore.getActiveBaseUrl(),
           provider: aiStore.provider,
           temperature: 0.2,
           signal: controller.signal,

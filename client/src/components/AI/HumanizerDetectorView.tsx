@@ -71,7 +71,7 @@ export const HumanizerDetectorView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const { files, activeFilePath, updateFileContent, jumpToLine } = useProjectStore();
-  const { provider, groqKey, geminiKey, selectedModel, insertAtCursor } = useAiStore();
+  const { provider, selectedModel, insertAtCursor, getActiveKey, getActiveBaseUrl } = useAiStore();
   const {
     isScanning,
     setIsScanning,
@@ -93,7 +93,8 @@ export const HumanizerDetectorView: React.FC = () => {
 
   const fileContent = files[activeFilePath]?.content || '';
   const wordCount = useMemo(() => countWords(fileContent), [fileContent]);
-  const activeKey = provider === 'groq' ? groqKey : geminiKey;
+  const activeKey = getActiveKey();
+  const baseUrl = getActiveBaseUrl();
 
   // Detector state
   const [scannedContent, setScannedContent] = useState<string | null>(null);
@@ -136,6 +137,7 @@ export const HumanizerDetectorView: React.FC = () => {
         text,
         model: selectedModel,
         apiKey: activeKey || undefined,
+        baseUrl,
         provider,
       });
       setDetectResult(res, path, text);
@@ -167,6 +169,7 @@ export const HumanizerDetectorView: React.FC = () => {
         text: source,
         model: selectedModel,
         apiKey: activeKey || undefined,
+        baseUrl,
         provider,
         academicStyle,
       });

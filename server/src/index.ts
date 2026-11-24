@@ -139,34 +139,51 @@ app.get('/api/synctex/reverse', (req, res) => {
   res.json({ success: true, ...result });
 });
 
-// AI Endpoints (Groq & Gemini)
+// AI Endpoints (Groq, Gemini, Anthropic, Ollama)
 app.get('/api/ai/status', (req, res) => {
   const hasGroq = !!process.env.GROQ_API_KEY;
   const hasGemini = !!process.env.GEMINI_API_KEY;
+  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
   res.json({
-    configured: hasGroq || hasGemini,
+    configured: hasGroq || hasGemini || hasAnthropic,
     hasGroq,
     hasGemini,
-    defaultModel: hasGroq ? 'openai/gpt-oss-120b' : 'gemini-3.6-flash',
-    defaultProvider: hasGroq ? 'groq' : 'gemini',
+    hasAnthropic,
+    ollamaBaseUrl,
+    defaultModel: hasGroq ? 'openai/gpt-oss-120b' : hasAnthropic ? 'claude-3-5-sonnet-20241022' : 'gemini-3.6-flash',
+    defaultProvider: hasGroq ? 'groq' : hasAnthropic ? 'anthropic' : 'gemini',
     supportedModels: [
+      // Groq Models
       { id: 'openai/gpt-oss-120b', name: 'OpenAI GPT-OSS 120B (Groq • Deep Reasoning & MoE)', provider: 'groq' },
       { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B (Groq • CoT Reasoning)', provider: 'groq', isReasoning: true },
       { id: 'deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill 32B (Groq • High-Speed Math & Logic)', provider: 'groq', isReasoning: true },
       { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Groq • High-Speed Multimodal & Tools)', provider: 'groq' },
       { id: 'openai/gpt-oss-20b', name: 'OpenAI GPT-OSS 20B (Groq • Fast Lightweight Execution)', provider: 'groq' },
+      // Gemini Models
       { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (Google • High-Speed Agentic & Production)', provider: 'gemini' },
       { id: 'gemini-2.0-flash-thinking-exp-01-21', name: 'Gemini 2.0 Flash Thinking (Google • Native Reasoning Trace)', provider: 'gemini', isReasoning: true },
       { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Google • Fast Workhorse & Coding)', provider: 'gemini' },
       { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro (Google • Deep Reasoning & Complex Tasks)', provider: 'gemini' },
+      // Anthropic Claude Models
+      { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet (Anthropic • Hybrid Thinking & SOTA)', provider: 'anthropic', isReasoning: true },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Anthropic • Scientific Writing & Code)', provider: 'anthropic' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Anthropic • Ultra Fast & Cost-Effective)', provider: 'anthropic' },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (Anthropic • Deep Conceptual Analysis)', provider: 'anthropic' },
+      // Ollama (Local) Models
+      { id: 'llama3.3:latest', name: 'Llama 3.3 70B (Ollama • Local Execution)', provider: 'ollama' },
+      { id: 'llama3.2:latest', name: 'Llama 3.2 (Ollama • Fast Lightweight Local)', provider: 'ollama' },
+      { id: 'deepseek-r1:latest', name: 'DeepSeek R1 (Ollama • Local Reasoning)', provider: 'ollama', isReasoning: true },
+      { id: 'qwen2.5-coder:latest', name: 'Qwen 2.5 Coder (Ollama • Code & LaTeX)', provider: 'ollama' },
+      { id: 'mistral:latest', name: 'Mistral (Ollama • Local General Purpose)', provider: 'ollama' },
     ],
   });
 });
 
 app.post('/api/ai/chat', async (req, res) => {
   try {
-    const { prompt, history, documentContext, selectedText, model, apiKey, provider, reasoningEffort } = req.body;
+    const { prompt, history, documentContext, selectedText, model, apiKey, provider, reasoningEffort, baseUrl } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
@@ -174,6 +191,7 @@ app.post('/api/ai/chat', async (req, res) => {
     const result = await dispatchAiChat({
       provider,
       apiKey,
+      baseUrl,
       model,
       prompt,
       history,
@@ -191,7 +209,7 @@ app.post('/api/ai/chat', async (req, res) => {
 
 app.post('/api/ai/inline-edit', async (req, res) => {
   try {
-    const { instruction, selectedText, surroundingContext, model, apiKey, provider } = req.body;
+    const { instruction, selectedText, surroundingContext, model, apiKey, provider, baseUrl } = req.body;
     if (!instruction || !selectedText) {
       return res.status(400).json({ error: 'Instruction and selectedText are required' });
     }
@@ -199,6 +217,7 @@ app.post('/api/ai/inline-edit', async (req, res) => {
     const replacement = await dispatchAiInlineEdit({
       provider,
       apiKey,
+      baseUrl,
       model,
       instruction,
       selectedText,
@@ -214,7 +233,7 @@ app.post('/api/ai/inline-edit', async (req, res) => {
 
 app.post('/api/ai/inline-completion', async (req, res) => {
   try {
-    const { prefix, suffix, model, apiKey, provider } = req.body;
+    const { prefix, suffix, model, apiKey, provider, baseUrl } = req.body;
     if (typeof prefix !== 'string') {
       return res.status(400).json({ error: 'Prefix is required' });
     }
@@ -222,6 +241,7 @@ app.post('/api/ai/inline-completion', async (req, res) => {
     const completion = await dispatchAiInlineCompletion({
       provider,
       apiKey,
+      baseUrl,
       model,
       prefix,
       suffix,
@@ -236,7 +256,7 @@ app.post('/api/ai/inline-completion', async (req, res) => {
 
 app.post('/api/ai/agent-step', async (req, res) => {
   try {
-    const { messages, tools, model, apiKey, provider, temperature } = req.body;
+    const { messages, tools, model, apiKey, provider, temperature, baseUrl } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'Messages array is required' });
     }
@@ -244,6 +264,7 @@ app.post('/api/ai/agent-step', async (req, res) => {
     const stepResult = await dispatchAiAgentStep({
       provider,
       apiKey,
+      baseUrl,
       model,
       messages,
       tools: tools || [],
@@ -260,7 +281,7 @@ app.post('/api/ai/agent-step', async (req, res) => {
 // Phase 4: Academic Humanizer
 app.post('/api/ai/humanize', async (req, res) => {
   try {
-    const { text, model, apiKey, provider, academicStyle } = req.body;
+    const { text, model, apiKey, provider, academicStyle, baseUrl } = req.body;
     if (!text) {
       return res.status(400).json({ error: 'Text is required' });
     }
@@ -269,6 +290,7 @@ app.post('/api/ai/humanize', async (req, res) => {
       text,
       model,
       apiKey,
+      baseUrl,
       provider,
       academicStyle,
     });
@@ -283,7 +305,7 @@ app.post('/api/ai/humanize', async (req, res) => {
 // Phase 4: AI Writing Detection Scanner
 app.post('/api/ai/detect-ai', async (req, res) => {
   try {
-    const { text, model, apiKey, provider } = req.body;
+    const { text, model, apiKey, provider, baseUrl } = req.body;
     if (!text) {
       return res.status(400).json({ error: 'Text is required' });
     }
@@ -292,6 +314,7 @@ app.post('/api/ai/detect-ai', async (req, res) => {
       text,
       model,
       apiKey,
+      baseUrl,
       provider,
     });
 
@@ -305,7 +328,7 @@ app.post('/api/ai/detect-ai', async (req, res) => {
 // Phase 4: Literature Understanding & Paper Synthesis
 app.post('/api/papers/synthesize', async (req, res) => {
   try {
-    const { action, papers, currentTopic, model, apiKey, provider } = req.body;
+    const { action, papers, currentTopic, model, apiKey, provider, baseUrl } = req.body;
     if (!papers || !Array.isArray(papers) || papers.length === 0) {
       return res.status(400).json({ error: 'At least one paper is required' });
     }
@@ -316,6 +339,7 @@ app.post('/api/papers/synthesize', async (req, res) => {
       currentTopic,
       model,
       apiKey,
+      baseUrl,
       provider,
     });
 
@@ -329,7 +353,7 @@ app.post('/api/papers/synthesize', async (req, res) => {
 // Phase 4: Agent Plan Generation
 app.post('/api/ai/plan', async (req, res) => {
   try {
-    const { goal, files, activeFile, model, apiKey, provider } = req.body;
+    const { goal, files, activeFile, model, apiKey, provider, baseUrl } = req.body;
     if (!goal) {
       return res.status(400).json({ error: 'Goal is required' });
     }
@@ -340,6 +364,7 @@ app.post('/api/ai/plan', async (req, res) => {
       activeFile,
       model,
       apiKey,
+      baseUrl,
       provider,
     });
 
@@ -353,7 +378,7 @@ app.post('/api/ai/plan', async (req, res) => {
 // Phase 6.4: Multimodal Formula OCR, Plot-to-TikZ & Table Extraction
 app.post('/api/ai/vision-to-latex', async (req, res) => {
   try {
-    const { imageBase64, mode, additionalInstructions, model, apiKey, provider } = req.body;
+    const { imageBase64, mode, additionalInstructions, model, apiKey, provider, baseUrl } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: 'Image (base64) is required' });
     }
@@ -364,6 +389,7 @@ app.post('/api/ai/vision-to-latex', async (req, res) => {
       additionalInstructions,
       model,
       apiKey,
+      baseUrl,
       provider,
     });
 
@@ -377,7 +403,7 @@ app.post('/api/ai/vision-to-latex', async (req, res) => {
 // Phase 13: Autonomous One-Shot End-to-End Manuscript Generation Agent
 app.post('/api/ai/one-shot-paper', async (req, res) => {
   try {
-    const { topic, hypothesis, venue, referencePapers, model, apiKey, provider } = req.body;
+    const { topic, hypothesis, venue, referencePapers, model, apiKey, provider, baseUrl } = req.body;
     if (!topic || typeof topic !== 'string' || !topic.trim()) {
       return res.status(400).json({ error: 'Paper topic / title is required' });
     }
@@ -389,6 +415,7 @@ app.post('/api/ai/one-shot-paper', async (req, res) => {
       referencePapers,
       model,
       apiKey,
+      baseUrl,
       provider,
     });
 

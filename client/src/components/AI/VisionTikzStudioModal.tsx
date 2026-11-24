@@ -24,7 +24,7 @@ export const VisionTikzStudioModal: React.FC<VisionTikzStudioModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { provider, groqKey, geminiKey, selectedModel, insertAtCursor } = useAiStore();
+  const { provider, selectedModel, insertAtCursor, getActiveKey, getActiveBaseUrl } = useAiStore();
 
   const [mode, setMode] = useState<'equation' | 'tikz' | 'table'>('equation');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -61,7 +61,8 @@ export const VisionTikzStudioModal: React.FC<VisionTikzStudioModalProps> = ({
 
   if (!isOpen) return null;
 
-  const apiKey = provider === 'groq' ? groqKey : geminiKey;
+  const apiKey = getActiveKey();
+  const baseUrl = getActiveBaseUrl();
 
   const processImageFile = (file: File) => {
     const reader = new FileReader();
@@ -85,6 +86,7 @@ export const VisionTikzStudioModal: React.FC<VisionTikzStudioModalProps> = ({
         additionalInstructions: notes.trim() || undefined,
         model: selectedModel,
         apiKey: apiKey || undefined,
+        baseUrl,
         provider,
       });
 

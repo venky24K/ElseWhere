@@ -77,6 +77,10 @@ export const SettingsModal: React.FC = () => {
     setGroqKey,
     geminiKey,
     setGeminiKey,
+    anthropicKey,
+    setAnthropicKey,
+    ollamaBaseUrl,
+    setOllamaBaseUrl,
     selectedModel,
     setSelectedModel,
     supportedModels,
@@ -563,22 +567,83 @@ export const SettingsModal: React.FC = () => {
                     </div>
                     <p className="text-[11px] text-text-muted mt-1">Deep LaTeX reasoning & multi-modal support</p>
                   </button>
+
+                  <button
+                    type="button"
+                    className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                      provider === 'anthropic'
+                        ? 'border-brand bg-brand/5 shadow-2xs'
+                        : 'border-border-subtle hover:bg-card-hover'
+                    }`}
+                    onClick={() => setProvider('anthropic')}
+                  >
+                    <div className="font-semibold text-text-primary text-xs flex items-center justify-between">
+                      <span>Anthropic Claude</span>
+                      {provider === 'anthropic' && <Check size={14} className="text-brand" />}
+                    </div>
+                    <p className="text-[11px] text-text-muted mt-1">Claude 3.7 & 3.5 Sonnet leading reasoning</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                      provider === 'ollama'
+                        ? 'border-brand bg-brand/5 shadow-2xs'
+                        : 'border-border-subtle hover:bg-card-hover'
+                    }`}
+                    onClick={() => setProvider('ollama')}
+                  >
+                    <div className="font-semibold text-text-primary text-xs flex items-center justify-between">
+                      <span>Ollama (Local)</span>
+                      {provider === 'ollama' && <Check size={14} className="text-brand" />}
+                    </div>
+                    <p className="text-[11px] text-text-muted mt-1">Private, offline local open models</p>
+                  </button>
                 </div>
 
                 <div className="pt-2">
                   <label className="block text-xs font-semibold text-text-primary mb-1">
-                    {provider === 'groq' ? 'Groq API Key' : 'Gemini API Key'}
+                    {provider === 'groq'
+                      ? 'Groq API Key'
+                      : provider === 'gemini'
+                      ? 'Gemini API Key'
+                      : provider === 'anthropic'
+                      ? 'Anthropic API Key'
+                      : 'Ollama Base URL'}
                   </label>
-                  <input
-                    type="password"
-                    value={provider === 'groq' ? groqKey : geminiKey}
-                    onChange={(e) => {
-                      if (provider === 'groq') setGroqKey(e.target.value);
-                      else setGeminiKey(e.target.value);
-                    }}
-                    placeholder={provider === 'groq' ? 'gsk_...' : 'AIzaSy...'}
-                    className="w-full bg-card border border-border-subtle text-text-primary text-xs px-3 py-2 rounded-lg outline-none focus:border-brand font-mono"
-                  />
+                  {provider === 'ollama' ? (
+                    <input
+                      type="text"
+                      value={ollamaBaseUrl}
+                      onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                      placeholder="http://localhost:11434"
+                      className="w-full bg-card border border-border-subtle text-text-primary text-xs px-3 py-2 rounded-lg outline-none focus:border-brand font-mono"
+                    />
+                  ) : (
+                    <input
+                      type="password"
+                      value={
+                        provider === 'groq'
+                          ? groqKey
+                          : provider === 'gemini'
+                          ? geminiKey
+                          : anthropicKey
+                      }
+                      onChange={(e) => {
+                        if (provider === 'groq') setGroqKey(e.target.value);
+                        else if (provider === 'gemini') setGeminiKey(e.target.value);
+                        else setAnthropicKey(e.target.value);
+                      }}
+                      placeholder={
+                        provider === 'groq'
+                          ? 'gsk_...'
+                          : provider === 'gemini'
+                          ? 'AIzaSy...'
+                          : 'sk-ant-...'
+                      }
+                      className="w-full bg-card border border-border-subtle text-text-primary text-xs px-3 py-2 rounded-lg outline-none focus:border-brand font-mono"
+                    />
+                  )}
                 </div>
 
                 <div className="pt-1">

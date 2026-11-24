@@ -98,9 +98,12 @@ export function extractThinking(rawText: string, explicitThought?: string): { cl
   return { cleanText, thought };
 }
 
+export type AiProvider = 'groq' | 'gemini' | 'anthropic' | 'ollama';
+
 export interface AiChatParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   prompt: string;
   history?: Array<{ role: 'user' | 'model' | 'assistant'; parts?: Array<{ text: string }>; content?: string }>;
@@ -115,8 +118,9 @@ export interface AiChatResult {
 }
 
 export interface AiInlineParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   instruction: string;
   selectedText: string;
@@ -124,16 +128,18 @@ export interface AiInlineParams {
 }
 
 export interface AiCompletionParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   prefix: string;
   suffix?: string;
 }
 
 export interface AiHumanizeParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   text: string;
   academicStyle?: 'standard' | 'nature' | 'ieee' | 'concise';
@@ -162,8 +168,9 @@ export interface SentenceEvaluation {
 }
 
 export interface AiDetectParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   text: string;
 }
@@ -191,8 +198,9 @@ export interface PaperItem {
 }
 
 export interface PaperSynthesisParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   action: 'related_work' | 'benchmark_table' | 'bibtex' | 'extract_metadata' | 'paper_summary' | 'synthesize_all';
   papers: PaperItem[];
@@ -208,8 +216,9 @@ export interface PlanStep {
 }
 
 export interface AiPlanParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   goal: string;
   files: string[];
@@ -217,14 +226,21 @@ export interface AiPlanParams {
 }
 
 // Helper to determine AI provider based on model or keys
-export function resolveProvider(model?: string, explicitProvider?: 'groq' | 'gemini'): 'groq' | 'gemini' {
+export function resolveProvider(model?: string, explicitProvider?: AiProvider): AiProvider {
   if (explicitProvider) return explicitProvider;
   if (!model) {
+    if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
     if (process.env.GROQ_API_KEY) return 'groq';
     return 'gemini';
   }
-  if (model.startsWith('gemini-')) return 'gemini';
-  return 'groq';
+  const m = model.toLowerCase();
+  if (m.startsWith('claude-')) return 'anthropic';
+  if (m.startsWith('gemini-')) return 'gemini';
+  if (m.startsWith('ollama') || m.includes(':') || m.includes('local')) return 'ollama';
+  if (m.includes('gpt-oss') || m.includes('distill') || m.includes('qwen3.8')) return 'groq';
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (process.env.GROQ_API_KEY) return 'groq';
+  return 'gemini';
 }
 
 // ================= Groq Implementation =================
@@ -461,11 +477,251 @@ ${params.surroundingContext ? `Surrounding file context:\n${params.surroundingCo
   return text.trim();
 }
 
+// ================= Anthropic Claude Implementation =================
+async function chatWithAnthropic(params: AiChatParams): Promise<AiChatResult> {
+  const key = params.apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    throw new Error('Anthropic API key is required. Please set it in AI Settings or server .env.');
+  }
+
+  const model = params.model || 'claude-3-5-sonnet-20241022';
+  const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+  if (params.history && params.history.length > 0) {
+    for (const h of params.history) {
+      const role = h.role === 'model' || h.role === 'assistant' ? 'assistant' : 'user';
+      let content = h.content || '';
+      if (!content && h.parts && h.parts.length > 0) {
+        content = h.parts.map((p) => p.text).join('\n');
+      }
+      if (content) {
+        if (messages.length > 0 && messages[messages.length - 1].role === role) {
+          messages[messages.length - 1].content += '\n\n' + content;
+        } else {
+          messages.push({ role, content });
+        }
+      }
+    }
+  }
+
+  let userPrompt = params.prompt;
+  if (params.documentContext) {
+    userPrompt += `\n\n[Active LaTeX Document Context]:\n\`\`\`latex\n${params.documentContext.slice(0, 15000)}\n\`\`\`\n`;
+  }
+  if (params.selectedText) {
+    userPrompt += `\n[Currently Selected LaTeX Code]:\n\`\`\`latex\n${params.selectedText}\n\`\`\`\n`;
+  }
+
+  if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+    messages[messages.length - 1].content += '\n\n' + userPrompt;
+  } else {
+    messages.push({ role: 'user', content: userPrompt });
+  }
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      system: DEFAULT_SYSTEM_INSTRUCTION,
+      messages,
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Anthropic API returned ${res.status}: ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  let text = '';
+  let thought = '';
+
+  for (const block of data.content || []) {
+    if (block.type === 'text') {
+      text += block.text;
+    } else if (block.type === 'thinking') {
+      thought += block.thinking;
+    }
+  }
+
+  const extracted = extractThinking(text, thought);
+  return {
+    reply: extracted.cleanText || 'No response generated.',
+    thought: extracted.thought,
+  };
+}
+
+async function inlineEditWithAnthropic(params: AiInlineParams): Promise<string> {
+  const key = params.apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    throw new Error('Anthropic API key is required. Please set it in AI Settings or server .env.');
+  }
+
+  const model = params.model || 'claude-3-5-sonnet-20241022';
+  const userContent = `Instruction: ${params.instruction}
+
+Selected LaTeX code / text to modify:
+${params.selectedText}
+
+${params.surroundingContext ? `Surrounding file context:\n${params.surroundingContext.slice(0, 5000)}` : ''}`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      system: INLINE_SYSTEM_INSTRUCTION,
+      messages: [{ role: 'user', content: userContent }],
+      temperature: 0.2,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Anthropic API returned ${res.status}`);
+  }
+
+  const data = await res.json();
+  let text = '';
+  for (const block of data.content || []) {
+    if (block.type === 'text') text += block.text;
+  }
+  text = text.trim();
+  if (text.startsWith('```latex')) text = text.replace(/^```latex\s*/, '').replace(/\s*```$/, '');
+  else if (text.startsWith('```')) text = text.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  return text.trim();
+}
+
+// ================= Ollama (Local) Implementation =================
+async function chatWithOllama(params: AiChatParams): Promise<AiChatResult> {
+  const baseUrl = (params.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
+  const model = params.model || 'llama3.2:latest';
+
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: DEFAULT_SYSTEM_INSTRUCTION },
+  ];
+
+  if (params.history && params.history.length > 0) {
+    for (const h of params.history) {
+      const role = h.role === 'model' || h.role === 'assistant' ? 'assistant' : 'user';
+      let content = h.content || '';
+      if (!content && h.parts && h.parts.length > 0) {
+        content = h.parts.map((p) => p.text).join('\n');
+      }
+      if (content) {
+        messages.push({ role, content });
+      }
+    }
+  }
+
+  let userPrompt = params.prompt;
+  if (params.documentContext) {
+    userPrompt += `\n\n[Active LaTeX Document Context]:\n\`\`\`latex\n${params.documentContext.slice(0, 15000)}\n\`\`\`\n`;
+  }
+  if (params.selectedText) {
+    userPrompt += `\n[Currently Selected LaTeX Code]:\n\`\`\`latex\n${params.selectedText}\n\`\`\`\n`;
+  }
+  messages.push({ role: 'user', content: userPrompt });
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (params.apiKey) {
+    headers['Authorization'] = `Bearer ${params.apiKey}`;
+  }
+
+  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.3,
+      stream: false,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Ollama API returned ${res.status}: ${res.statusText}. Please verify Ollama is running at ${baseUrl}`);
+  }
+
+  const data = await res.json();
+  const choice = data.choices?.[0];
+  const rawContent = choice?.message?.content || choice?.text || '';
+  const reasoning = choice?.message?.reasoning_content || undefined;
+
+  const extracted = extractThinking(rawContent, reasoning);
+  return {
+    reply: extracted.cleanText || reasoning || 'No response generated.',
+    thought: extracted.thought,
+  };
+}
+
+async function inlineEditWithOllama(params: AiInlineParams): Promise<string> {
+  const baseUrl = (params.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
+  const model = params.model || 'llama3.2:latest';
+
+  const userContent = `Instruction: ${params.instruction}
+
+Selected LaTeX code / text to modify:
+${params.selectedText}
+
+${params.surroundingContext ? `Surrounding file context:\n${params.surroundingContext.slice(0, 5000)}` : ''}`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (params.apiKey) headers['Authorization'] = `Bearer ${params.apiKey}`;
+
+  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: INLINE_SYSTEM_INSTRUCTION },
+        { role: 'user', content: userContent },
+      ],
+      temperature: 0.2,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Ollama API returned ${res.status}. Please verify Ollama is running at ${baseUrl}`);
+  }
+
+  const data = await res.json();
+  let text = data.choices?.[0]?.message?.content?.trim() || '';
+  if (text.startsWith('```latex')) text = text.replace(/^```latex\s*/, '').replace(/\s*```$/, '');
+  else if (text.startsWith('```')) text = text.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  return text.trim();
+}
+
 // Unified Dispatchers
 export async function dispatchAiChat(params: AiChatParams): Promise<AiChatResult> {
   const provider = resolveProvider(params.model, params.provider);
   if (provider === 'groq') {
     return chatWithGroq(params);
+  }
+  if (provider === 'anthropic') {
+    return chatWithAnthropic(params);
+  }
+  if (provider === 'ollama') {
+    return chatWithOllama(params);
   }
   return chatWithGemini(params as any);
 }
@@ -474,6 +730,12 @@ export async function dispatchAiInlineEdit(params: AiInlineParams): Promise<stri
   const provider = resolveProvider(params.model, params.provider);
   if (provider === 'groq') {
     return inlineEditWithGroq(params);
+  }
+  if (provider === 'anthropic') {
+    return inlineEditWithAnthropic(params);
+  }
+  if (provider === 'ollama') {
+    return inlineEditWithOllama(params);
   }
   return inlineEditWithGemini(params);
 }
@@ -565,8 +827,91 @@ Complete the code at <CURSOR>. Provide ONLY the raw text that should be inserted
   return text;
 }
 
+async function completeWithAnthropic(params: AiCompletionParams): Promise<string> {
+  const key = params.apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error('Anthropic API key is required.');
+
+  const model = params.model || 'claude-3-5-haiku-20241022';
+  const prompt = `<PREFIX>${params.prefix.slice(-2000)}<CURSOR>${(params.suffix || '').slice(0, 1000)}<SUFFIX>
+Complete the code at <CURSOR>. Provide ONLY the raw text that should be inserted directly at <CURSOR>. Do NOT repeat prefix or suffix. Do NOT wrap in markdown fences. If nothing is needed, return empty string.`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 120,
+      system: 'You are an ultra-fast inline code completion engine for a LaTeX editor. Output ONLY the raw continuation text at the cursor. No conversational text, no markdown fences.',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      stop_sequences: ['<SUFFIX>', '\n\n\n'],
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Anthropic API returned ${res.status}`);
+  }
+
+  const data = await res.json();
+  let text = '';
+  for (const block of data.content || []) {
+    if (block.type === 'text') text += block.text;
+  }
+  text = text.trim();
+  if (text.startsWith('```latex')) text = text.replace(/^```latex\s*/, '').replace(/\s*```$/, '');
+  else if (text.startsWith('```')) text = text.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  return text;
+}
+
+async function completeWithOllama(params: AiCompletionParams): Promise<string> {
+  const baseUrl = (params.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
+  const model = params.model || 'llama3.2:latest';
+  const prompt = `<PREFIX>${params.prefix.slice(-2000)}<CURSOR>${(params.suffix || '').slice(0, 1000)}<SUFFIX>
+Complete the code at <CURSOR>. Provide ONLY the raw text that should be inserted directly at <CURSOR>. Do NOT repeat prefix or suffix. Do NOT wrap in markdown fences. If nothing is needed, return empty string.`;
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (params.apiKey) headers['Authorization'] = `Bearer ${params.apiKey}`;
+
+  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: 'You are an ultra-fast inline code completion engine for a LaTeX editor. Output ONLY the raw continuation text at the cursor. No conversational text, no markdown fences.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.1,
+      max_tokens: 120,
+      stop: ['<SUFFIX>', '\n\n\n'],
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Ollama API returned ${res.status}`);
+  }
+
+  const data = await res.json();
+  let text = data.choices?.[0]?.message?.content || '';
+  if (text.startsWith('```latex')) text = text.replace(/^```latex\s*/, '').replace(/\s*```$/, '');
+  else if (text.startsWith('```')) text = text.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  return text;
+}
+
 export async function dispatchAiInlineCompletion(params: AiCompletionParams): Promise<string> {
   const provider = resolveProvider(params.model, params.provider);
+  if (provider === 'anthropic') {
+    return completeWithAnthropic(params);
+  }
+  if (provider === 'ollama') {
+    return completeWithOllama(params);
+  }
   if (provider === 'gemini') {
     return completeWithGemini(params);
   }
@@ -601,8 +946,9 @@ export interface AgentMessage {
 }
 
 export interface AiAgentStepParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   messages: AgentMessage[];
   tools: AgentToolDeclaration[];
@@ -834,10 +1180,196 @@ async function agentStepWithGemini(params: AiAgentStepParams): Promise<AiAgentSt
   };
 }
 
+// ================= Anthropic Agent Step Implementation =================
+async function agentStepWithAnthropic(params: AiAgentStepParams): Promise<AiAgentStepResult> {
+  const key = params.apiKey || process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    throw new Error('Anthropic API key is required for agent execution.');
+  }
+
+  const model = params.model || 'claude-3-5-sonnet-20241022';
+  const systemMsg = params.messages.find((m) => m.role === 'system');
+  const system = systemMsg?.content || DEFAULT_SYSTEM_INSTRUCTION;
+
+  const tools = (params.tools || []).map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.parameters || { type: 'object', properties: {} },
+  }));
+
+  const messages: Array<{ role: 'user' | 'assistant'; content: any }> = [];
+
+  for (const m of params.messages) {
+    if (m.role === 'system') continue;
+    if (m.role === 'tool') {
+      messages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: m.tool_call_id || 'call_0',
+            content: m.content || '',
+          },
+        ],
+      });
+    } else if (m.role === 'assistant') {
+      const blocks: any[] = [];
+      if (m.content) blocks.push({ type: 'text', text: m.content });
+      if (m.tool_calls && m.tool_calls.length > 0) {
+        for (const tc of m.tool_calls) {
+          let input = {};
+          try {
+            input = JSON.parse(tc.function.arguments || '{}');
+          } catch {
+            input = { raw: tc.function.arguments };
+          }
+          blocks.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input,
+          });
+        }
+      }
+      if (blocks.length > 0) {
+        messages.push({ role: 'assistant', content: blocks });
+      }
+    } else {
+      messages.push({ role: 'user', content: m.content || '' });
+    }
+  }
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      system,
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
+      max_tokens: 4096,
+      temperature: params.temperature ?? 0.2,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Anthropic Agent API returned ${res.status}`);
+  }
+
+  const data = await res.json();
+  let textContent = '';
+  let thoughtContent = '';
+  const tool_calls: any[] = [];
+
+  for (const block of data.content || []) {
+    if (block.type === 'text') {
+      textContent += block.text;
+    } else if (block.type === 'thinking') {
+      thoughtContent += block.thinking;
+    } else if (block.type === 'tool_use') {
+      tool_calls.push({
+        id: block.id,
+        type: 'function',
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        },
+      });
+    }
+  }
+
+  const extracted = extractThinking(textContent, thoughtContent);
+  return {
+    message: {
+      role: 'assistant',
+      content: extracted.cleanText || null,
+      thought: extracted.thought,
+      tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+    },
+  };
+}
+
+// ================= Ollama Agent Step Implementation =================
+async function agentStepWithOllama(params: AiAgentStepParams): Promise<AiAgentStepResult> {
+  const baseUrl = (params.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
+  const model = params.model || 'llama3.2:latest';
+
+  const tools = (params.tools || []).map((t) => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    },
+  }));
+
+  const messages = params.messages.map((m) => {
+    if (m.role === 'tool') {
+      return {
+        role: 'tool',
+        tool_call_id: m.tool_call_id,
+        name: m.name,
+        content: m.content || '',
+      };
+    }
+    return {
+      role: m.role,
+      content: m.content || (m.tool_calls ? '' : null),
+      tool_calls: m.tool_calls,
+    };
+  });
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (params.apiKey) headers['Authorization'] = `Bearer ${params.apiKey}`;
+
+  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
+      tool_choice: tools.length > 0 ? 'auto' : undefined,
+      temperature: params.temperature ?? 0.2,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(errBody.error?.message || `Ollama Agent API returned ${res.status}. Please verify Ollama is running at ${baseUrl}`);
+  }
+
+  const data = await res.json();
+  const msg = data.choices?.[0]?.message;
+  const rawContent = msg?.content || '';
+  const reasoning = msg?.reasoning_content || undefined;
+
+  const extracted = extractThinking(rawContent, reasoning);
+  return {
+    message: {
+      role: 'assistant',
+      content: extracted.cleanText || null,
+      thought: extracted.thought,
+      tool_calls: msg?.tool_calls && msg.tool_calls.length > 0 ? msg.tool_calls : undefined,
+    },
+  };
+}
+
 export async function dispatchAiAgentStep(params: AiAgentStepParams): Promise<AiAgentStepResult> {
   const provider = resolveProvider(params.model, params.provider);
   if (provider === 'groq') {
     return agentStepWithGroq(params);
+  }
+  if (provider === 'anthropic') {
+    return agentStepWithAnthropic(params);
+  }
+  if (provider === 'ollama') {
+    return agentStepWithOllama(params);
   }
   return agentStepWithGemini(params);
 }
@@ -1243,8 +1775,9 @@ Example:
 
 // ================= Multimodal Vision-to-LaTeX & TikZ Vectorizer =================
 export interface VisionToLatexParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   imageBase64: string;
   mimeType?: string;
@@ -1295,7 +1828,84 @@ Instructions:
 
   const provider = resolveProvider(params.model, params.provider);
 
-  if (provider === 'gemini' || !process.env.GROQ_API_KEY) {
+  if (provider === 'anthropic') {
+    const key = params.apiKey || process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error('Anthropic API key is required for multimodal vision.');
+    const model = params.model || 'claude-3-5-sonnet-20241022';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mimeType,
+                  data: cleanBase64,
+                },
+              },
+              { type: 'text', text: prompt },
+            ],
+          },
+        ],
+        temperature: 0.1,
+      }),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+      throw new Error(errBody.error?.message || `Anthropic Vision API returned ${res.status}`);
+    }
+    const data = await res.json();
+    let latex = '';
+    for (const block of data.content || []) {
+      if (block.type === 'text') latex += block.text;
+    }
+    latex = latex.trim();
+    if (latex.startsWith('```latex')) latex = latex.replace(/^```latex\s*/, '').replace(/\s*```$/, '');
+    else if (latex.startsWith('```')) latex = latex.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    return { latex: latex.trim() };
+  } else if (provider === 'ollama') {
+    const baseUrl = (params.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
+    const model = params.model || 'llama3.2-vision:latest';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (params.apiKey) headers['Authorization'] = `Bearer ${params.apiKey}`;
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${cleanBase64}` } },
+            ],
+          },
+        ],
+        temperature: 0.1,
+      }),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }));
+      throw new Error(errBody.error?.message || `Ollama Vision API returned ${res.status}`);
+    }
+    const data = await res.json();
+    let latex = data.choices?.[0]?.message?.content?.trim() || '';
+    if (latex.startsWith('```latex')) latex = latex.replace(/^```latex\s*/, '').replace(/\s*```$/, '');
+    else if (latex.startsWith('```')) latex = latex.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    return { latex: latex.trim() };
+  } else if (provider === 'gemini' || !process.env.GROQ_API_KEY) {
     const key = params.apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API key is required for multimodal vision.');
     const genAI = new GoogleGenerativeAI(key);
@@ -1356,8 +1966,9 @@ Instructions:
 
 // ================= Autonomous "One-Shot" End-to-End Manuscript Generation Agent =================
 export interface OneShotPaperParams {
-  provider?: 'groq' | 'gemini';
+  provider?: AiProvider;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
   topic: string;
   hypothesis?: string;

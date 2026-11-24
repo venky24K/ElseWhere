@@ -1,16 +1,21 @@
+export type AiProvider = 'groq' | 'gemini' | 'anthropic' | 'ollama';
+
 export interface SupportedModel {
   id: string;
   name: string;
-  provider: 'groq' | 'gemini';
+  provider: AiProvider;
   isReasoning?: boolean;
+  isCustom?: boolean;
 }
 
 export interface AiStatus {
   configured: boolean;
   hasGroq: boolean;
   hasGemini: boolean;
+  hasAnthropic?: boolean;
+  ollamaBaseUrl?: string;
   defaultModel: string;
-  defaultProvider: 'groq' | 'gemini';
+  defaultProvider: AiProvider;
   supportedModels: SupportedModel[];
 }
 
@@ -40,7 +45,8 @@ export async function sendAiChatRequest(params: {
   selectedText?: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'deep';
   signal?: AbortSignal;
 }): Promise<AiChatResponse> {
@@ -70,7 +76,8 @@ export async function sendAiInlineEditRequest(params: {
   surroundingContext?: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   signal?: AbortSignal;
 }): Promise<string> {
   const { signal, ...body } = params;
@@ -95,7 +102,8 @@ export async function sendAiInlineCompletionRequest(params: {
   suffix?: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   signal?: AbortSignal;
 }): Promise<string> {
   const { signal, ...body } = params;
@@ -153,7 +161,8 @@ export async function sendAiAgentStep(params: {
   tools: any[];
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   temperature?: number;
   signal?: AbortSignal;
 }): Promise<AgentStepResponse> {
@@ -186,7 +195,8 @@ export async function sendAiHumanizeRequest(params: {
   text: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   academicStyle?: 'standard' | 'nature' | 'ieee' | 'concise';
   signal?: AbortSignal;
 }): Promise<AiHumanizeResponse> {
@@ -236,7 +246,8 @@ export async function sendAiDetectRequest(params: {
   text: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   signal?: AbortSignal;
 }): Promise<AiDetectResponse> {
   const { signal, ...body } = params;
@@ -273,7 +284,8 @@ export async function sendPaperSynthesisRequest(params: {
   currentTopic?: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   signal?: AbortSignal;
 }): Promise<{ result: string }> {
   const { signal, ...body } = params;
@@ -307,7 +319,8 @@ export async function sendAiGeneratePlanRequest(params: {
   activeFile?: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   signal?: AbortSignal;
 }): Promise<PlanStep[]> {
   const { signal, ...body } = params;
@@ -375,7 +388,8 @@ export async function sendVisionToLatexRequest(params: {
   additionalInstructions?: string;
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   signal?: AbortSignal;
 }): Promise<{ latex: string }> {
   const { signal, ...body } = params;
@@ -415,7 +429,8 @@ export async function sendOneShotPaperRequest(params: {
   referencePapers?: any[];
   model?: string;
   apiKey?: string;
-  provider?: 'groq' | 'gemini';
+  baseUrl?: string;
+  provider?: AiProvider;
   signal?: AbortSignal;
 }): Promise<OneShotPaperResult> {
   const { signal, ...body } = params;

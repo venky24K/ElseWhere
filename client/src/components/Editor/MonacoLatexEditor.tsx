@@ -309,13 +309,14 @@ export const MonacoLatexEditor: React.FC = () => {
     async (flagIndex: number) => {
       const flag = useDetectionStore.getState().flags.find((f) => f.index === flagIndex);
       if (!flag) return;
-      const { provider, groqKey, geminiKey, selectedModel } = useAiStore.getState();
-      const activeKey = provider === 'groq' ? groqKey : geminiKey;
+      const { provider, selectedModel, getActiveKey, getActiveBaseUrl } = useAiStore.getState();
+      const activeKey = getActiveKey();
       try {
         const res = await sendAiHumanizeRequest({
           text: flag.sentence,
           model: selectedModel,
           apiKey: activeKey || undefined,
+          baseUrl: getActiveBaseUrl(),
           provider,
           academicStyle: 'standard',
         });
@@ -433,12 +434,13 @@ export const MonacoLatexEditor: React.FC = () => {
           ghostInflightRef.current += 1;
           useAiStore.getState().setGhostTextLoading(true);
           try {
-            const { provider, groqKey, geminiKey, selectedModel } = useAiStore.getState();
+            const { provider, selectedModel, getActiveKey, getActiveBaseUrl } = useAiStore.getState();
             const completion = await sendAiInlineCompletionRequest({
               prefix,
               suffix,
               provider,
-              apiKey: provider === 'gemini' ? geminiKey : groqKey,
+              apiKey: getActiveKey() || undefined,
+              baseUrl: getActiveBaseUrl(),
               model: selectedModel,
             });
             if (token.isCancellationRequested || !completion?.trim()) return { items: [] };
