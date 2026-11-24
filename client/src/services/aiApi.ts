@@ -228,6 +228,8 @@ export interface SentenceEvaluation {
   status: 'likely_ai' | 'mixed' | 'likely_human';
   reasons: string[];
   suggestedRewrite?: string;
+  /** True when the suggested rewrite was re-checked by the detector and not flagged. */
+  rewriteVerified?: boolean;
   wordReplacements?: WordReplacement[];
 }
 
@@ -240,6 +242,9 @@ export interface AiDetectResponse {
   detectedCliches: string[];
   sentenceBreakdown: SentenceEvaluation[];
   summary: string;
+  /** LLM detection passes that succeeded; 0 means the score is from heuristics only. */
+  llmPasses?: number;
+  llmPassesRequested?: number;
 }
 
 export async function sendAiDetectRequest(params: {
