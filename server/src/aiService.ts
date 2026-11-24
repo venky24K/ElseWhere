@@ -1405,15 +1405,29 @@ export async function dispatchAiHumanize(params: AiHumanizeParams): Promise<AiHu
   const remainingCliches = detectClichesInText(humanizedText);
   const removedCliches = detectedCliches.filter((c) => !remainingCliches.includes(c));
 
-  // Compute originality score (90-99% if cliches eliminated)
-  const baseScore = Math.max(88, 98 - remainingCliches.length * 4);
+  // Run the real LLM-backed detector on the humanized output to get an honest originality score.
+  // Fall back to a cliché-count heuristic only if detection throws (e.g. no API key configured).
+  let originalityScore: number;
+  try {
+    const detectResult = await dispatchAiDetect({
+      provider: params.provider,
+      apiKey: params.apiKey,
+      baseUrl: params.baseUrl,
+      model: params.model,
+      text: humanizedText,
+    });
+    originalityScore = detectResult.humanScore;
+  } catch {
+    // Fallback: keyword-only estimate (better than nothing, but clearly imperfect)
+    originalityScore = Math.max(60, 95 - remainingCliches.length * 5);
+  }
 
   return {
     originalText: params.text,
     humanizedText,
     detectedCliches,
     removedCliches,
-    originalityScore: baseScore,
+    originalityScore,
   };
 }
 
@@ -1464,12 +1478,11 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
 
   const detectedCliches = detectClichesInText(rawText);
 
-  // Compute word counts per sentence
+  // ── Heuristic sentence-level breakdown (used for UI annotations & word suggestions) ──
   const sentenceWordCounts = sentences.map((s) => s.split(/\s+/).length);
   const meanLength = sentenceWordCounts.length > 0
     ? sentenceWordCounts.reduce((a, b) => a + b, 0) / sentenceWordCounts.length
     : 0;
-
   const variance = sentenceWordCounts.length > 0
     ? sentenceWordCounts.reduce((acc, len) => acc + Math.pow(len - meanLength, 2), 0) / sentenceWordCounts.length
     : 0;
@@ -1488,14 +1501,11 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
       if (sLower.startsWith(starter)) {
         reasons.push(`Formulaic AI transition ("${starter}")`);
         penalty += 30;
-
         const options = AI_WORD_SUGGESTIONS[starter] || [''];
         wordReplacements.push({
           original: s.slice(0, starter.length),
           replacements: options.map((opt) => (opt === '' ? '(remove)' : opt)),
         });
-
-        // Generate clean rewrite by stripping the formulaic starter and capitalizing the next word
         const rest = s.slice(starter.length).trimStart();
         if (rest.length > 0) {
           rewriteCandidate = rest.charAt(0).toUpperCase() + rest.slice(1);
@@ -1507,16 +1517,12 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
       if (sLower.includes(cliche)) {
         reasons.push(`Synthetic cliché ("${cliche}")`);
         penalty += 25;
-
         const options = AI_WORD_SUGGESTIONS[cliche];
         if (options && options.length > 0) {
           const regex = new RegExp(cliche.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
           const match = rewriteCandidate.match(regex);
           if (match) {
-            wordReplacements.push({
-              original: match[0],
-              replacements: options,
-            });
+            wordReplacements.push({ original: match[0], replacements: options });
             rewriteCandidate = rewriteCandidate.replace(regex, options[0]);
           }
         }
@@ -1525,13 +1531,9 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
 
     if (rewriteCandidate.toLowerCase().includes('in order to')) {
       rewriteCandidate = rewriteCandidate.replace(/in order to/gi, 'to');
-      wordReplacements.push({
-        original: 'in order to',
-        replacements: ['to'],
-      });
+      wordReplacements.push({ original: 'in order to', replacements: ['to'] });
     }
 
-    // Monotonous sentence length penalty
     const words = s.split(/\s+/).length;
     if (words >= 18 && words <= 24 && penalty > 0) {
       reasons.push('Standard LLM median sentence length');
@@ -1543,24 +1545,100 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
     if (score < 50) status = 'likely_ai';
     else if (score < 75) status = 'mixed';
 
-    const suggestedRewrite = rewriteCandidate !== s ? rewriteCandidate.trim() : undefined;
-
     return {
       sentence: s,
       score,
       status,
       reasons,
-      suggestedRewrite,
+      suggestedRewrite: rewriteCandidate !== s ? rewriteCandidate.trim() : undefined,
       wordReplacements: wordReplacements.length > 0 ? wordReplacements : undefined,
     };
   });
 
-  const flaggedCount = sentenceBreakdown.filter((s) => s.status !== 'likely_human').length;
-  const totalScore = sentenceBreakdown.length > 0
-    ? (flaggedCount === 0 ? 100 : Math.round(sentenceBreakdown.reduce((acc, curr) => acc + curr.score, 0) / sentenceBreakdown.length))
-    : 100;
+  // ── LLM-based scoring: far more accurate than keyword matching alone ──
+  // Ask the configured AI provider to judge the text. We request a JSON response
+  // with a humanScore 0-100 and a one-line reasoning. We fall back to the
+  // pure-heuristic score if the LLM call fails or returns an unparseable response.
+  let llmHumanScore: number | null = null;
+  let llmSummary: string | null = null;
 
-  const humanScore = totalScore;
+  const textSample = rawText.length > 3000 ? rawText.slice(0, 3000) + '\n[...truncated for analysis...]' : rawText;
+
+  const llmDetectPrompt = `You are an expert AI-writing detector. Analyze the following academic text and determine whether it was written by a human or generated by an AI language model (such as GPT, Claude, Gemini, etc.).
+
+Consider these signals:
+- Sentence burstiness: humans vary sentence length dramatically; LLMs are uniform.
+- Hedge-word overuse: LLMs over-use "it is worth noting", "importantly", "significantly", etc.
+- Over-polished, over-structured prose with no genuine voice or idiosyncrasy.
+- Formulaic paragraph structure: topic sentence → 2-3 supporting points → summary.
+- Passive voice and nominalisation patterns typical of LLM academic imitation.
+- Genuine academic writing has specific, concrete claims; LLMs produce vague generalisations.
+- Unusual word choices, typos, or intentionally varied punctuation typically signal human writing.
+
+Respond ONLY with a valid JSON object, no markdown, no explanation outside the JSON:
+{
+  "humanScore": <integer 0-100, where 100 = certainly human, 0 = certainly AI>,
+  "reasoning": "<one or two sentences explaining the key signals you detected>"
+}
+
+Text to analyse:
+---
+${textSample}
+---`;
+
+  try {
+    const provider = resolveProvider(params.model, params.provider);
+    let llmRawReply = '';
+
+    const inlineParams = {
+      apiKey: params.apiKey,
+      model: params.model,
+      instruction: llmDetectPrompt,
+      selectedText: '',
+    };
+
+    if (provider === 'anthropic') {
+      llmRawReply = await inlineEditWithAnthropic(inlineParams);
+    } else if (provider === 'groq') {
+      llmRawReply = await inlineEditWithGroq(inlineParams);
+    } else if (provider === 'ollama') {
+      llmRawReply = await inlineEditWithOllama({ ...inlineParams, baseUrl: params.baseUrl });
+    } else {
+      // Default: Gemini
+      llmRawReply = await inlineEditWithGemini(inlineParams);
+    }
+
+    // Strip markdown fences if the LLM wrapped it anyway
+    const jsonStr = llmRawReply.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const parsed = JSON.parse(jsonStr);
+    if (typeof parsed.humanScore === 'number' && parsed.humanScore >= 0 && parsed.humanScore <= 100) {
+      llmHumanScore = Math.round(parsed.humanScore);
+    }
+    if (typeof parsed.reasoning === 'string' && parsed.reasoning.length > 0) {
+      llmSummary = parsed.reasoning;
+    }
+  } catch {
+    // LLM unavailable or returned non-JSON — fall back to heuristics only
+    llmHumanScore = null;
+  }
+
+  // ── Combine LLM score (70%) + heuristic burstiness-adjusted score (30%) ──
+  // Heuristic score: average per-sentence scores adjusted for low burstiness.
+  const heuristicAvg = sentenceBreakdown.length > 0
+    ? Math.round(sentenceBreakdown.reduce((acc, curr) => acc + curr.score, 0) / sentenceBreakdown.length)
+    : 100;
+  let burstinessPenalty = 0;
+  if (sentenceBreakdown.length >= 4) {
+    if (burstiness < 2) burstinessPenalty = 20;
+    else if (burstiness < 3.5) burstinessPenalty = 12;
+    else if (burstiness < 5) burstinessPenalty = 5;
+  }
+  const heuristicScore = Math.max(0, Math.min(100, heuristicAvg - burstinessPenalty));
+
+  const humanScore = llmHumanScore !== null
+    ? Math.round(llmHumanScore * 0.7 + heuristicScore * 0.3)
+    : heuristicScore;
+
   const aiScore = 100 - humanScore;
 
   let perplexityLevel: 'Low (Robotic)' | 'Moderate' | 'High (Human-like)' = 'Moderate';
@@ -1571,11 +1649,12 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
   if (humanScore < 55) verdict = 'Likely Synthetic AI';
   else if (humanScore < 78) verdict = 'Mixed / Edited';
 
-  const summary = verdict === 'Human Written'
-    ? 'High sentence burstiness and authentic academic cadence. Low probability of AI generation.'
-    : verdict === 'Mixed / Edited'
-    ? 'Some formulaic transitions or robotic sentence structures detected. Recommend humanizing.'
-    : 'High concentration of predictable LLM transitional phrases and uniform sentence lengths.';
+  const summary = llmSummary
+    ?? (verdict === 'Human Written'
+      ? 'High sentence burstiness and authentic academic cadence. Low probability of AI generation.'
+      : verdict === 'Mixed / Edited'
+      ? 'Some formulaic transitions or robotic sentence structures detected. Recommend humanizing.'
+      : 'High concentration of predictable LLM transitional phrases and uniform sentence lengths.');
 
   return {
     humanScore,
