@@ -236,8 +236,20 @@ export function resolveProvider(model?: string, explicitProvider?: AiProvider): 
   const m = model.toLowerCase();
   if (m.startsWith('claude-')) return 'anthropic';
   if (m.startsWith('gemini-')) return 'gemini';
-  if (m.startsWith('ollama') || m.includes(':') || m.includes('local')) return 'ollama';
-  if (m.includes('gpt-oss') || m.includes('distill') || m.includes('qwen3.8')) return 'groq';
+  // BUG-10 FIX: Ollama detection must come before the `:` check is applied to Groq model
+  // ids like `openai/gpt-oss-120b` (no colon). Only treat colon-models as Ollama when they
+  // also look like Ollama pull tags (e.g. llama3.3:latest, qwen2.5-coder:latest).
+  if (m.startsWith('ollama') || m.includes('local')) return 'ollama';
+  if (/^[a-z0-9._-]+:[a-z0-9._-]+$/.test(m)) return 'ollama'; // e.g. llama3.3:latest
+  // Groq-hosted models: OpenAI-oss, DeepSeek distills, Qwen (any version), LLaMA, Mistral
+  if (
+    m.includes('gpt-oss') ||
+    m.includes('distill') ||
+    m.includes('qwen') ||       // covers qwen3.8-27b AND qwen2.5-coder
+    m.includes('llama') ||
+    m.includes('mistral') ||
+    m.includes('deepseek')
+  ) return 'groq';
   if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
   if (process.env.GROQ_API_KEY) return 'groq';
   return 'gemini';
@@ -317,7 +329,9 @@ async function chatWithGroq(params: AiChatParams): Promise<AiChatResult> {
   };
 }
 
-async function inlineEditWithGroq(params: AiInlineParams): Promise<string> {
+// BUG-8 FIX: Export all three inline-edit helpers consistently so dispatchAiDetect and
+// any future callers outside this file can reference them without duplicating the logic.
+export async function inlineEditWithGroq(params: AiInlineParams): Promise<string> {
   const key = params.apiKey || process.env.GROQ_API_KEY;
   if (!key) {
     throw new Error('Groq API key is required. Please set it in AI Settings or server .env.');
@@ -558,7 +572,7 @@ async function chatWithAnthropic(params: AiChatParams): Promise<AiChatResult> {
   };
 }
 
-async function inlineEditWithAnthropic(params: AiInlineParams): Promise<string> {
+export async function inlineEditWithAnthropic(params: AiInlineParams): Promise<string> {
   const key = params.apiKey || process.env.ANTHROPIC_API_KEY;
   if (!key) {
     throw new Error('Anthropic API key is required. Please set it in AI Settings or server .env.');
@@ -670,7 +684,7 @@ async function chatWithOllama(params: AiChatParams): Promise<AiChatResult> {
   };
 }
 
-async function inlineEditWithOllama(params: AiInlineParams): Promise<string> {
+export async function inlineEditWithOllama(params: AiInlineParams): Promise<string> {
   const baseUrl = (params.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
   const model = params.model || 'llama3.2:latest';
 

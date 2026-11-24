@@ -32,7 +32,29 @@ try {
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+// BUG-9 FIX: Restrict CORS to known origins instead of allowing all (*).
+// In development allow localhost on common ports; in production read CLIENT_ORIGIN from env.
+const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const LOCALHOST_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow server-to-server requests (no origin header)
+      if (!origin) return callback(null, true);
+      if (LOCALHOST_RE.test(origin)) return callback(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      // In development (no CLIENT_ORIGIN configured) allow all — avoids breaking local dev
+      if (ALLOWED_ORIGINS.length === 0) return callback(null, true);
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/health', (req, res) => {

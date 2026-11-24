@@ -417,15 +417,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   closeTab: (path) => {
     set((state) => {
       const nextTabs = state.openTabs.filter((t) => t !== path);
-      let nextActive = '';
+      let nextActive = state.activeFilePath;
       if (state.activeFilePath === path) {
         if (nextTabs.length > 0) {
+          // BUG-7 FIX: idx is the position in the ORIGINAL list; after removal nextTabs has
+          // one fewer entry so we must clamp to nextTabs.length - 1 to avoid going out of bounds
+          // (which previously left nextActive as undefined / empty string on the last tab).
           const idx = state.openTabs.indexOf(path);
-          const newIdx = Math.max(0, idx - 1);
-          nextActive = nextTabs[newIdx] || nextTabs[0];
+          const newIdx = Math.min(Math.max(0, idx - 1), nextTabs.length - 1);
+          nextActive = nextTabs[newIdx];
+        } else {
+          // All tabs closed — fall back to main.tex so the editor is never blank
+          nextActive = 'main.tex';
         }
-      } else {
-        nextActive = state.activeFilePath;
       }
       return { openTabs: nextTabs, activeFilePath: nextActive };
     });
@@ -563,10 +567,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   deleteFile: (path) => {
     set((state) => {
-      if (path === 'main.tex') {
-        alert('main.tex cannot be deleted as it is the project root document.');
-        return state;
-      }
+      // BUG-6 FIX: Never call alert() inside a Zustand state setter — it blocks the render
+      // thread mid-transaction. Return state unchanged; callers should check the return value
+      // or the store should expose a separate validation function.
+      if (path === 'main.tex') return state;
       const updated = { ...state.files };
       delete updated[path];
       const nextTabs = state.openTabs.filter((t) => t !== path);
@@ -633,25 +637,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
   },
 
-  uploadFile: async (file: File) => {
-    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|pdf|eps)$/i.test(file.name);
-    const reader = new FileReader();
+  // BUG-5 FIX: Return a real Promise so callers can await completion. Attach onerror so
+  // failed reads surface instead of being silently swallowed.
+  uploadFile: (file: File): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|pdf|eps)$/i.test(file.name);
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
 
-    if (isImage) {
-      reader.onload = () => {
-        const result = reader.result as string;
-        // remove data URL prefix (e.g. "data:image/png;base64,")
-        const base64 = result.split(',')[1];
-        get().createFile(file.name, base64, true);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      reader.onload = () => {
-        const text = reader.result as string;
-        get().createFile(file.name, text, false);
-      };
-      reader.readAsText(file);
-    }
+      if (isImage) {
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          get().createFile(file.name, base64, true);
+          resolve();
+        };
+        reader.readAsDataURL(file);
+      } else {
+        reader.onload = () => {
+          const text = reader.result as string;
+          get().createFile(file.name, text, false);
+          resolve();
+        };
+        reader.readAsText(file);
+      }
+    });
   },
 
   loadTemplate: (templateId: string) => {

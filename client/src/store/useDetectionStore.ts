@@ -51,19 +51,17 @@ function findSentencePosition(
   const words = sentence.trim().split(/\s+/);
   if (words.length === 0) return null;
 
-  // Try direct regex match allowing \s+ between words to bridge newlines
-  const searchWords = words.slice(0, Math.min(words.length, 12));
-  const patternStr = searchWords.map(escapeRegex).join('\\s+');
+  // BUG-11 FIX: Run a single regex over all words so both startIdx and endIdx always refer
+  // to the same occurrence. The previous code ran two separate exec() calls which could
+  // match different occurrences of repeated phrases, producing corrupted highlight ranges.
+  const fullPatternStr = words.map(escapeRegex).join('\\s+');
 
   try {
-    const rx = new RegExp(patternStr, 'i');
-    const match = rx.exec(fileContent);
-    if (match) {
-      const startIdx = match.index;
-      const fullPatternStr = words.map(escapeRegex).join('\\s+');
-      const fullRx = new RegExp(fullPatternStr, 'i');
-      const fullMatch = fullRx.exec(fileContent);
-      const endIdx = fullMatch ? fullMatch.index + fullMatch[0].length : startIdx + match[0].length;
+    const fullRx = new RegExp(fullPatternStr, 'i');
+    const fullMatch = fullRx.exec(fileContent);
+    if (fullMatch) {
+      const startIdx = fullMatch.index;
+      const endIdx = startIdx + fullMatch[0].length;
 
       const pre = fileContent.slice(0, startIdx);
       const startLine = pre.split('\n').length;
@@ -75,16 +73,13 @@ function findSentencePosition(
       const lastNlEnd = post.lastIndexOf('\n');
       const endCol = lastNlEnd === -1 ? endIdx + 1 : endIdx - lastNlEnd;
 
-      return {
-        lineNumber: startLine,
-        startColumn: startCol,
-        endLineNumber: endLine,
-        endColumn: endCol,
-      };
+      return { lineNumber: startLine, startColumn: startCol, endLineNumber: endLine, endColumn: endCol };
     }
-  } catch {}
+  } catch {
+    // Regex too complex (e.g. special chars) — fall through to line-by-line search
+  }
 
-  // Fallback: search line by line
+  // Fallback: search line by line using a plain substring match on the first 35 chars
   const cleanSnippet = sentence.slice(0, Math.min(sentence.length, 35)).trim();
   const lines = fileContent.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -142,9 +137,10 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
     const firstAiIdx = flags.findIndex((f) => f.status !== 'likely_human');
     const initialActive = firstAiIdx !== -1 ? firstAiIdx : 0;
 
-    const adjustedResult = flagged.length === 0 && result.humanScore < 100
-      ? { ...result, humanScore: 100, aiScore: 0, verdict: 'Human Written' as const }
-      : result;
+    // BUG-4 FIX: Never override the LLM-based humanScore just because no keyword sentences
+    // were flagged. The heuristic sentence breakdown can be empty (no cliché hits) while the
+    // LLM correctly returned a low score. Preserve whatever the server computed.
+    const adjustedResult = result;
 
     set({
       detectResult: adjustedResult,
@@ -229,9 +225,14 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
     });
 
     const flaggedLeft = nextFlags.filter((f) => f.status !== 'likely_human');
-    const newHumanScore = nextFlags.length > 0
-      ? (flaggedLeft.length === 0 ? 100 : Math.round(nextFlags.reduce((acc, curr) => acc + curr.score, 0) / nextFlags.length))
-      : 100;
+    // BUG-3 FIX: Never force humanScore to 100 just because all heuristic flags are resolved.
+    // The LLM may have given a legitimately lower score. Use the actual per-flag average,
+    // but cap the incremental improvement: each resolved flag can only push the score toward
+    // the LLM ceiling, not past it.
+    const avgScore = nextFlags.length > 0
+      ? Math.round(nextFlags.reduce((acc, curr) => acc + curr.score, 0) / nextFlags.length)
+      : (detectResult?.humanScore ?? 100);
+    const newHumanScore = Math.max(detectResult?.humanScore ?? 0, Math.min(avgScore, 100));
 
     const updatedResult = detectResult
       ? {
