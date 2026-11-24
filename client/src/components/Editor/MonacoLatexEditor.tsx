@@ -6,6 +6,7 @@ import { useAiStore } from '../../store/useAiStore';
 import { useAgentStore } from '../../store/useAgentStore';
 import { useDetectionStore } from '../../store/useDetectionStore';
 import { sendAiInlineCompletionRequest, sendAiHumanizeRequest } from '../../services/aiApi';
+import { replaceSentenceInText } from '../../lib/utils';
 import { InlineCommandPalette } from '../AI/InlineCommandPalette';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import {
@@ -226,52 +227,36 @@ export const MonacoLatexEditor: React.FC = () => {
     (sentence: string, replacement: string, flagIndex?: number) => {
       const editor = editorRef.current;
       const model = editor?.getModel();
-      if (!editor || !model) {
-        const curContent = useProjectStore.getState().files[activeFilePath]?.content || '';
-        if (curContent.includes(sentence)) {
-          useProjectStore.getState().updateFileContent(activeFilePath, curContent.replace(sentence, replacement));
-          if (flagIndex !== undefined) {
-            useDetectionStore.getState().resolveFlag(flagIndex, replacement);
-          }
+      const monaco = monacoRef.current;
+      const curContent = model?.getValue() ?? (useProjectStore.getState().files[activeFilePath]?.content || '');
+
+      // Robust multiline replacement that seamlessly bridges newlines and LaTeX spacing
+      const res = replaceSentenceInText(curContent, sentence, replacement);
+
+      if (res.replaced) {
+        // If Monaco model is active and we have exact line/col coordinates, execute as an editor edit
+        if (editor && model && res.range && monaco) {
+          const targetRange = new monaco.Range(
+            res.range.startLine,
+            res.range.startCol,
+            res.range.endLine,
+            res.range.endCol
+          );
+          editor.executeEdits('ai-fix', [
+            {
+              range: targetRange,
+              text: replacement,
+              forceMoveMarkers: true,
+            },
+          ]);
+          editor.pushUndoStop();
+          editor.revealRangeInCenterIfOutsideViewport(targetRange);
         }
-        return;
-      }
 
-      // Escape special regex characters and allow any whitespace/newlines between words
-      const words = sentence.trim().split(/\s+/);
-      const pattern = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
-      let targetRange: any = null;
-
-      try {
-        const matches = model.findMatches(pattern, false, true /* isRegex */, true, null, false);
-        if (matches.length > 0) {
-          targetRange = matches[0].range;
-        }
-      } catch {}
-
-      if (!targetRange) {
-        const litMatches = model.findMatches(sentence, false, false, true, null, false);
-        if (litMatches.length > 0) {
-          targetRange = litMatches[0].range;
-        }
-      }
-
-      if (targetRange) {
-        editor.executeEdits('ai-fix', [
-          {
-            range: targetRange,
-            text: replacement,
-            forceMoveMarkers: true,
-          },
-        ]);
-        editor.pushUndoStop();
-        editor.revealRangeInCenterIfOutsideViewport(targetRange);
-        editor.focus();
+        // Always guarantee project store file content is updated
+        useProjectStore.getState().updateFileContent(activeFilePath, res.newContent);
       } else {
-        const fullContent = model.getValue();
-        if (fullContent.includes(sentence)) {
-          useProjectStore.getState().updateFileContent(activeFilePath, fullContent.replace(sentence, replacement));
-        }
+        console.warn('[applyReplacementToEditor] Sentence could not be matched in content:', sentence);
       }
 
       if (flagIndex !== undefined) {

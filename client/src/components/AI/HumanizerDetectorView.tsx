@@ -7,6 +7,7 @@ import {
   sendAiDetectRequest,
   type AiHumanizeResponse,
 } from '../../services/aiApi';
+import { replaceSentenceInText } from '../../lib/utils';
 import {
   Loader2,
   Check,
@@ -196,7 +197,14 @@ export const HumanizerDetectorView: React.FC = () => {
 
   // Directly apply a replacement to the document and resolve the flag
   const handleDirectApply = (original: string, replacement: string, flagIndex?: number) => {
-    // 1. Dispatch custom event for Monaco editor
+    // 1. Robust multiline/whitespace-agnostic text replacement in the project store
+    const curContent = files[activeFilePath]?.content || '';
+    const res = replaceSentenceInText(curContent, original, replacement);
+    if (res.replaced) {
+      updateFileContent(activeFilePath, res.newContent);
+    }
+
+    // 2. Dispatch custom event for Monaco editor to update its range and undo stack
     window.dispatchEvent(
       new CustomEvent('elsewhere-apply-editor-edit', {
         detail: {
@@ -207,12 +215,6 @@ export const HumanizerDetectorView: React.FC = () => {
         },
       })
     );
-
-    // 2. Update project store in case editor didn't catch it
-    const curContent = files[activeFilePath]?.content || '';
-    if (curContent.includes(original)) {
-      updateFileContent(activeFilePath, curContent.replace(original, replacement));
-    }
 
     // 3. Mark flag as resolved in detection store
     if (flagIndex !== undefined) {
