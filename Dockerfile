@@ -41,7 +41,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-recommended \
     texlive-latex-extra \
     texlive-fonts-recommended \
+    texlive-xetex \
+    texlive-luatex \
+    fonts-texgyre \
+    fonts-lmodern \
     latexmk \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

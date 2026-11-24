@@ -447,6 +447,9 @@ export const MonacoLatexEditor: React.FC = () => {
             }
           }
         },
+        // Monaco >= 0.52 calls disposeInlineCompletions; older versions call freeInlineCompletions.
+        // The CDN loader serves monaco-editor 0.55, so both must exist or Monaco throws on dispose.
+        disposeInlineCompletions: () => { },
         freeInlineCompletions: () => { },
       })
     );

@@ -7,7 +7,7 @@ export interface VirtualFile {
 export interface CompileRequest {
   files: VirtualFile[];
   mainFile?: string;
-  engine?: 'auto' | 'tectonic' | 'latexmk' | 'pdflatex' | 'xelatex';
+  engine?: 'auto' | 'tectonic' | 'latexmk' | 'pdflatex' | 'xelatex' | 'lualatex';
 }
 
 export interface LaTeXDiagnostic {
@@ -36,6 +36,7 @@ export interface EngineStatus {
     latexmk: boolean;
     pdflatex: boolean;
     xelatex: boolean;
+    lualatex: boolean;
   };
   recommendedEngine: string | null;
   hasAnyEngine: boolean;

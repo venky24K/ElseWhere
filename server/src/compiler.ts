@@ -60,29 +60,126 @@ export async function detectEngines(): Promise<EngineStatus> {
     }
   };
 
-  const [tectonic, latexmk, pdflatex, xelatex] = await Promise.all([
+  const [tectonic, latexmk, pdflatex, xelatex, lualatex] = await Promise.all([
     checkCmd('tectonic', ['--version']),
     checkCmd('latexmk', ['-v']),
     checkCmd('pdflatex', ['-version']),
     checkCmd('xelatex', ['-version']),
+    checkCmd('lualatex', ['-version']),
   ]);
 
-  const hasAnyEngine = tectonic || latexmk || pdflatex || xelatex;
+  const hasAnyEngine = tectonic || latexmk || pdflatex || xelatex || lualatex;
   let recommendedEngine: string | null = null;
   if (latexmk) recommendedEngine = 'latexmk';
   else if (pdflatex) recommendedEngine = 'pdflatex';
   else if (tectonic) recommendedEngine = 'tectonic';
   else if (xelatex) recommendedEngine = 'xelatex';
+  else if (lualatex) recommendedEngine = 'lualatex';
 
   const instructions = hasAnyEngine
     ? `LaTeX engine detected: ${recommendedEngine}`
     : `No LaTeX compiler found on your system. To enable native PDF compilation, run:\n\n  brew install tectonic\n\n(Tectonic is modern, fast, and auto-downloads packages on the fly!) or install MacTeX/BasicTeX.`;
 
   return {
-    availableEngines: { tectonic, latexmk, pdflatex, xelatex },
+    availableEngines: { tectonic, latexmk, pdflatex, xelatex, lualatex },
     recommendedEngine,
     hasAnyEngine,
     instructions,
+  };
+}
+
+type TexFormat = 'pdflatex' | 'xelatex' | 'lualatex';
+type EngineName = keyof EngineStatus['availableEngines'];
+
+/**
+ * Works out which TeX format the document needs:
+ *  1. A `% !TEX program = xelatex|lualatex|pdflatex` magic comment in the main file wins.
+ *  2. Otherwise, packages that only work on Unicode engines (fontspec, unicode-math, polyglossia)
+ *     mean XeLaTeX.
+ * Returns null when nothing in the source says, so the normal default applies.
+ */
+export function detectRequiredFormat(files: VirtualFile[], mainFile: string): { format: TexFormat; reason: string } | null {
+  const main = files.find((f) => !f.isBinary && path.normalize(f.path) === path.normalize(mainFile));
+  if (main) {
+    const head = main.content.split('\n').slice(0, 30).join('\n');
+    const magic = head.match(/^\s*%\s*!\s*TEX\s+(?:TS-)?program\s*=\s*([a-z]+)/im);
+    if (magic) {
+      const prog = magic[1].toLowerCase();
+      if (prog === 'xelatex' || prog === 'xetex') return { format: 'xelatex', reason: `"% !TEX program = ${magic[1]}" in ${mainFile}` };
+      if (prog === 'lualatex' || prog === 'luatex') return { format: 'lualatex', reason: `"% !TEX program = ${magic[1]}" in ${mainFile}` };
+      if (prog === 'pdflatex') return { format: 'pdflatex', reason: `"% !TEX program = ${magic[1]}" in ${mainFile}` };
+    }
+  }
+
+  const unicodePkg = /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{[^}]*\b(fontspec|unicode-math|polyglossia)\b[^}]*\}/;
+  for (const f of files) {
+    if (f.isBinary || !/\.(tex|sty|cls)$/i.test(f.path)) continue;
+    // Ignore commented-out lines.
+    const active = f.content.split('\n').filter((l) => !/^\s*%/.test(l)).join('\n');
+    const m = active.match(unicodePkg);
+    if (m) return { format: 'xelatex', reason: `\\usepackage{${m[1]}} in ${f.path} requires XeLaTeX or LuaLaTeX` };
+  }
+  return null;
+}
+
+/** Command line for a given engine + TeX format. All variants run with -no-shell-escape (SEC-01). */
+function buildEngineCommand(engine: EngineName, format: TexFormat, mainFileName: string): { cmd: string; args: string[]; label: string } {
+  const common = ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1'];
+  if (engine === 'tectonic') {
+    // Tectonic is XeTeX-based, so it handles both pdflatex- and xelatex-style documents.
+    return { cmd: 'tectonic', args: ['-o', '.', '--keep-logs', '--synctex', mainFileName], label: 'tectonic' };
+  }
+  if (engine === 'latexmk') {
+    const flag = format === 'xelatex' ? '-xelatex' : format === 'lualatex' ? '-lualatex' : '-pdf';
+    return { cmd: 'latexmk', args: [flag, ...common, mainFileName], label: `latexmk (${format})` };
+  }
+  return { cmd: engine, args: [...common, mainFileName], label: engine };
+}
+
+/**
+ * Picks the engine to run. Honours an explicit user choice when it can build the document, but
+ * never runs pdfLaTeX on a document that needs a Unicode engine, since that can only fail.
+ */
+function chooseEngine(
+  requested: string | undefined,
+  status: EngineStatus,
+  required: { format: TexFormat; reason: string } | null
+): { engine: EngineName; format: TexFormat; note?: string } {
+  const has = status.availableEngines;
+  const format: TexFormat = required?.format ?? 'pdflatex';
+
+  const canBuild = (e: EngineName): boolean => {
+    if (!has[e]) return false;
+    if (format === 'pdflatex') return e !== 'xelatex' && e !== 'lualatex';
+    if (e === 'latexmk') return has[format]; // latexmk needs the underlying binary
+    if (e === 'tectonic') return format === 'xelatex';
+    return e === format;
+  };
+
+  const explicit = requested && requested !== 'auto' ? (requested as EngineName) : null;
+  if (explicit && canBuild(explicit)) return { engine: explicit, format };
+
+  const preference: EngineName[] =
+    format === 'xelatex' ? ['latexmk', 'xelatex', 'tectonic']
+    : format === 'lualatex' ? ['latexmk', 'lualatex']
+    : ['latexmk', 'pdflatex', 'tectonic'];
+  const picked = preference.find(canBuild);
+
+  if (picked) {
+    const note = explicit
+      ? `Selected engine "${explicit}" cannot build this document (${required?.reason}); using ${picked} instead.`
+      : required && format !== 'pdflatex'
+      ? `Using ${format}: ${required.reason}.`
+      : undefined;
+    return { engine: picked, format, note };
+  }
+
+  // Nothing installed can build the required format: run the best available engine and say why it will fail.
+  const fallback = (explicit && has[explicit] ? explicit : (status.recommendedEngine as EngineName)) || 'pdflatex';
+  return {
+    engine: fallback,
+    format: fallback === 'tectonic' ? 'xelatex' : 'pdflatex',
+    note: required ? `This document needs ${format} (${required.reason}), but ${format} is not installed on this server.` : undefined,
   };
 }
 
@@ -129,12 +226,9 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     };
   }
 
-  // Determine engine to use
-  let selectedEngine = req.engine && req.engine !== 'auto' ? req.engine : engineStatus.recommendedEngine || 'pdflatex';
-
-  if (!engineStatus.availableEngines[selectedEngine as keyof typeof engineStatus.availableEngines]) {
-    selectedEngine = engineStatus.recommendedEngine || 'pdflatex';
-  }
+  // Determine engine to use from the request, what's installed, and what the document needs.
+  const requiredFormat = detectRequiredFormat(req.files, mainFile);
+  const choice = chooseEngine(req.engine, engineStatus, requiredFormat);
 
   try {
     // 1. Create temporary isolated build directory
@@ -192,16 +286,8 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
       BSTINPUTS: texinputs,
     };
 
-    let cmd = selectedEngine;
-    let args: string[] = [];
-
-    if (selectedEngine === 'tectonic') {
-      args = ['-o', '.', '--keep-logs', '--synctex', mainFileName];
-    } else if (selectedEngine === 'latexmk') {
-      args = ['-pdf', '-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFileName];
-    } else if (selectedEngine === 'pdflatex' || selectedEngine === 'xelatex') {
-      args = ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFileName];
-    }
+    const { cmd, args, label } = buildEngineCommand(choice.engine, choice.format, mainFileName);
+    let selectedEngine = label;
 
     let stdout = '';
     let stderr = '';
@@ -228,6 +314,7 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
       path.join(buildDir, `${mainFileBaseName}.log`),
     ];
     let rawLog = (stdout + (stderr ? '\n' + stderr : '')).trim();
+    if (choice.note) rawLog = `[ElseWhere] ${choice.note}\n\n${rawLog}`;
 
     for (const logPath of candidateLogPaths) {
       try {
@@ -243,6 +330,11 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
 
     // 5. Parse diagnostics
     const { errors, warnings } = parseLaTeXLog(rawLog, mainFile);
+    if (choice.note && choice.note.includes('not installed')) {
+      errors.unshift({ type: 'error', file: mainFile, message: choice.note });
+    } else if (choice.note) {
+      warnings.unshift({ type: 'info', file: mainFile, message: choice.note });
+    }
 
     // 6. Check for output PDF
     const candidatePdfPaths = [
@@ -272,14 +364,16 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     }
 
     // If initial engine failed to produce PDF, attempt graceful fallback to pdflatex
-    if (!success && selectedEngine !== 'pdflatex' && engineStatus.availableEngines.pdflatex) {
+    // Fall back to the plain binary for the same format (e.g. latexmk failed but xelatex may work).
+    const fallbackEngine: EngineName = choice.format === 'pdflatex' ? 'pdflatex' : choice.format;
+    if (!success && choice.engine !== fallbackEngine && engineStatus.availableEngines[fallbackEngine]) {
       try {
-        const fallbackRes = await execFileAsync('pdflatex', ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFileName], {
+        const fallbackRes = await execFileAsync(fallbackEngine, ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFileName], {
           cwd: mainFileDir,
           timeout: 120000,
           env: compilerEnv,
         });
-        rawLog += `\n\n--- Fallback Engine: pdflatex ---\n` + (fallbackRes.stdout || '') + (fallbackRes.stderr ? '\n' + fallbackRes.stderr : '');
+        rawLog += `\n\n--- Fallback Engine: ${fallbackEngine} ---\n` + (fallbackRes.stdout || '') + (fallbackRes.stderr ? '\n' + fallbackRes.stderr : '');
         for (const logPath of candidateLogPaths) {
           try {
             const fallbackLog = await fs.readFile(logPath, 'utf-8');
@@ -296,7 +390,7 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
             pdfBuffer = await fs.readFile(pdfPath);
             if (pdfBuffer && pdfBuffer.length > 0) {
               success = true;
-              selectedEngine = 'pdflatex (fallback)';
+              selectedEngine = `${fallbackEngine} (fallback)`;
               const standardTarget = path.join(buildDir, `${baseName}.pdf`);
               if (pdfPath !== standardTarget) {
                 await fs.mkdir(path.dirname(standardTarget), { recursive: true });
@@ -310,7 +404,7 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
         }
       } catch (fallbackErr: any) {
         // Fallback did not succeed, keep original log
-        rawLog += `\n[Fallback pdflatex attempt]: ${fallbackErr?.message || 'failed'}`;
+        rawLog += `\n[Fallback ${fallbackEngine} attempt]: ${fallbackErr?.message || 'failed'}`;
       }
     }
 

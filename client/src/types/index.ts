@@ -43,6 +43,7 @@ export interface EngineStatus {
     latexmk: boolean;
     pdflatex: boolean;
     xelatex: boolean;
+    lualatex?: boolean;
   };
   recommendedEngine: string | null;
   hasAnyEngine: boolean;

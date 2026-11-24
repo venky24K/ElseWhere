@@ -406,6 +406,7 @@ export const SettingsModal: React.FC = () => {
                       <option value="latexmk">LaTeXmk</option>
                       <option value="pdflatex">pdfLaTeX</option>
                       <option value="xelatex">XeLaTeX</option>
+                      <option value="lualatex">LuaLaTeX</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                   </div>
