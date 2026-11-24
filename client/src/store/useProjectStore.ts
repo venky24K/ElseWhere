@@ -706,9 +706,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       set({
         compilationState: res.success ? 'success' : 'error',
-        buildId: res.buildId || null,
-        pdfUrl: res.pdfUrl || null,
-        hasSyncTex: Boolean(res.hasSyncTex),
+        buildId: res.success ? (res.buildId || null) : null,
+        pdfUrl: res.success ? (res.pdfUrl || null) : null,
+        hasSyncTex: res.success ? Boolean(res.hasSyncTex) : false,
         compileDuration: res.durationMs,
         errors: res.errors || [],
         warnings: res.warnings || [],
@@ -720,6 +720,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } catch (err: any) {
       set({
         compilationState: 'error',
+        buildId: null,
+        pdfUrl: null,
+        hasSyncTex: false,
         errors: [
           {
             type: 'error',

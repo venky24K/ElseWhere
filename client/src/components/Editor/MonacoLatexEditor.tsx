@@ -510,42 +510,13 @@ export const MonacoLatexEditor: React.FC = () => {
       return undefined;
     };
 
-    // Forward SyncTeX: On click or cursor movement in editor, scroll PDF to matching word/section
+    // Forward SyncTeX: On click inside editor, scroll PDF to matching word/section
     track(
       editor.onMouseDown((e: any) => {
         if (e.target?.position?.lineNumber) {
           const pos = e.target.position;
           const word = extractWord(pos);
           forwardSyncToPdf(pathRef.current, pos.lineNumber, pos.column, word);
-        }
-      })
-    );
-
-    let cursorSyncDebounce: any = null;
-    track(
-      editor.onDidChangeCursorPosition((e: any) => {
-        if (cursorSyncDebounce) clearTimeout(cursorSyncDebounce);
-        cursorSyncDebounce = setTimeout(() => {
-          const pos = e.position;
-          const word = extractWord(pos);
-          forwardSyncToPdf(pathRef.current, pos.lineNumber, pos.column, word);
-        }, 300);
-      })
-    );
-
-    let selectionSyncDebounce: any = null;
-    track(
-      editor.onDidChangeCursorSelection((e: any) => {
-        const selection = e.selection;
-        if (!selection || selection.isEmpty()) return;
-        const model = editor.getModel();
-        if (!model) return;
-        const selectedText = model.getValueInRange(selection)?.trim();
-        if (selectedText && selectedText.length > 0 && selectedText.length < 60) {
-          if (selectionSyncDebounce) clearTimeout(selectionSyncDebounce);
-          selectionSyncDebounce = setTimeout(() => {
-            forwardSyncToPdf(pathRef.current, selection.startLineNumber, selection.startColumn, selectedText);
-          }, 200);
         }
       })
     );

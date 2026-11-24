@@ -11,6 +11,7 @@ export interface PendingEdit {
   newContent: string;
   addedLines: number;
   removedLines: number;
+  isNewFile?: boolean;
 }
 
 export interface AgentToolCallLog {
@@ -305,6 +306,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           const editPath = parsedArgs.path as string | undefined;
           const filesSnapshot = useProjectStore.getState().files;
           const existingPending = editPath ? get().pendingEdits[editPath] : undefined;
+          const isNewFile = existingPending ? existingPending.isNewFile : Boolean(editPath && !filesSnapshot[editPath]);
           const originalContent = existingPending
             ? existingPending.originalContent
             : editPath && filesSnapshot[editPath]
@@ -344,6 +346,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                   newContent: updatedContent,
                   addedLines: diffStats.addedLines,
                   removedLines: diffStats.removedLines,
+                  isNewFile,
                 },
               },
             }));
@@ -437,10 +440,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   rejectEdit: (path: string) => {
     const edit = get().pendingEdits[path];
     if (edit) {
-      if (edit.originalContent) {
-        useProjectStore.getState().updateFileContent(path, edit.originalContent);
-      } else {
+      if (edit.isNewFile) {
         useProjectStore.getState().deleteFile(path);
+      } else {
+        useProjectStore.getState().updateFileContent(path, edit.originalContent);
       }
     }
     set((state) => {
@@ -463,10 +466,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const { pendingEdits } = get();
     const projectStore = useProjectStore.getState();
     Object.values(pendingEdits).forEach((edit) => {
-      if (edit.originalContent) {
-        projectStore.updateFileContent(edit.path, edit.originalContent);
-      } else {
+      if (edit.isNewFile) {
         projectStore.deleteFile(edit.path);
+      } else {
+        projectStore.updateFileContent(edit.path, edit.originalContent);
       }
     });
     set({ pendingEdits: {} });

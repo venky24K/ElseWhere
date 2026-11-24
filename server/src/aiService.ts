@@ -845,24 +845,26 @@ export async function dispatchAiAgentStep(params: AiAgentStepParams): Promise<Ai
 // ================= Academic Humanizer Engine =================
 export async function dispatchAiHumanize(params: AiHumanizeParams): Promise<AiHumanizeResult> {
   const detectedCliches = detectClichesInText(params.text);
-  const prompt = `You are ElseWhere's Academic Humanizer Engine.
-Rewrite the following scientific/academic text so it reads as authentic, published research written by leading human domain experts.
 
-STRICT REQUIREMENTS:
-1. Strip synthetic AI tropes and repetitive transition words (e.g., "${detectedCliches.join('", "') || 'delve into, testament to, pivotal role, moreover, furthermore'}").
-2. Vary sentence length (burstiness): weave together concise empirical claims and nuanced compound sentences.
-3. Natural academic rhythm: use precise signposting ("Specifically,", "In particular,", "Consequently,") and field-specific scientific vocabulary.
-4. ABSOLUTE FIDELITY: Strictly preserve all LaTeX commands, math equations ($...$, \\begin{equation}), \\cite{...} citation keys, and \\ref{...} labels.
-5. Return ONLY the rewritten text without conversational commentary or markdown block formatting.
+  const styleDescriptions: Record<string, string> = {
+    nature: 'Nature / Science style: direct, active voice, punchy empirical assertions, high sentence burstiness.',
+    ieee: 'IEEE style: formal, methodical, precise technical terminology, passive/objective voice where standard.',
+    concise: 'Concise style: compact, high information density, eliminating all filler or redundant phrasing.',
+    standard: 'Standard peer-reviewed journal style: balanced, rigorous, authentic academic tone.',
+  };
+  const styleInstruction = styleDescriptions[params.academicStyle || 'standard'] || styleDescriptions.standard;
 
-Text to Humanize:
-${params.text}`;
+  const clichesList = detectedCliches.length > 0
+    ? `Specifically strip these detected AI clichés: "${detectedCliches.join('", "')}".`
+    : 'Strip all synthetic AI tropes and repetitive transitional words (e.g., "moreover", "furthermore", "delve into", "pivotal role").';
+
+  const instruction = `Rewrite with authentic human academic tone (${styleInstruction}). ${clichesList} Weave varied sentence lengths (burstiness) with natural academic cadence. ABSOLUTE FIDELITY: Strictly preserve all LaTeX commands, math equations ($...$, \\begin{equation}), \\cite{...} citations, and \\ref{...} labels. Output ONLY the rewritten text without markdown code fences or conversational commentary.`;
 
   const replacement = await dispatchAiInlineEdit({
     provider: params.provider,
     apiKey: params.apiKey,
     model: params.model,
-    instruction: 'Rewrite with authentic human academic tone and varied cadence, removing all AI clichés while strictly preserving LaTeX math and citations.',
+    instruction,
     selectedText: params.text,
   });
 

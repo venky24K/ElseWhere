@@ -91,8 +91,12 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
   const buildId = uuidv4();
   const buildDir = path.join(os.tmpdir(), 'latexer-builds', buildId);
   const rawMainFile = req.mainFile || 'main.tex';
-  // Sanitize mainFile to prevent path traversal or option injection
-  const safeMainFile = path.normalize(rawMainFile).replace(/^([a-zA-Z]:|[\\/])*/, '').replace(/(\.\.[\\/])+/g, '');
+  // Sanitize mainFile to prevent path traversal or option injection (SEC-02)
+  const safeMainFile = path
+    .normalize(rawMainFile)
+    .replace(/^([a-zA-Z]:|[\\/])*/, '')
+    .replace(/(\.\.[\\/])+/g, '')
+    .replace(/^-+/, '');
   const mainFile = safeMainFile || 'main.tex';
 
   const engineStatus = await detectEngines();
