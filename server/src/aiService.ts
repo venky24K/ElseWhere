@@ -1480,6 +1480,96 @@ function extractProseSentences(text: string): string[] {
   return parsed;
 }
 
+// Helper for direct JSON LLM queries in AI detection scanner
+async function queryLlmForDetection(
+  prompt: string,
+  provider: AiProvider,
+  apiKey?: string,
+  model?: string,
+  baseUrl?: string
+): Promise<string> {
+  if (provider === 'gemini') {
+    const key = apiKey || process.env.GEMINI_API_KEY;
+    if (!key) throw new Error('Gemini API key is required.');
+    const genAI = new GoogleGenerativeAI(key);
+    const modelName = normalizeGeminiModel(model);
+    const genModel = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+      },
+    });
+    const res = await genModel.generateContent(prompt);
+    return res.response.text();
+  }
+
+  if (provider === 'groq') {
+    const key = apiKey || process.env.GROQ_API_KEY;
+    if (!key) throw new Error('Groq API key is required.');
+    let m = model && !model.startsWith('gemini-') && !model.startsWith('claude-') ? model : 'openai/gpt-oss-120b';
+    if (['llama-3.1-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'].includes(m)) {
+      m = 'openai/gpt-oss-120b';
+    }
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: m,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+      }),
+    });
+    if (!res.ok) throw new Error(`Groq API error: ${res.statusText}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  if (provider === 'anthropic') {
+    const key = apiKey || process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error('Anthropic API key is required.');
+    const m = model && model.startsWith('claude-') ? model : 'claude-3-5-sonnet-20241022';
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: m,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+      }),
+    });
+    if (!res.ok) throw new Error(`Anthropic API error: ${res.statusText}`);
+    const data = await res.json();
+    return data.content?.[0]?.text || '';
+  }
+
+  // Ollama
+  const base = baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+  const m = model || 'llama3.2:latest';
+  const res = await fetch(`${base}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: m,
+      messages: [{ role: 'user', content: prompt }],
+      format: 'json',
+      stream: false,
+    }),
+  });
+  if (!res.ok) throw new Error(`Ollama API error: ${res.statusText}`);
+  const data = await res.json();
+  return data.message?.content || '';
+}
+
 export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetectResult> {
   const rawText = params.text.trim();
   const proseSentences = extractProseSentences(rawText);
@@ -1492,7 +1582,7 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
 
   const detectedCliches = detectClichesInText(rawText);
 
-  // ── Heuristic sentence-level breakdown (used for UI annotations & word suggestions) ──
+  // Compute word counts and burstiness metrics
   const sentenceWordCounts = sentences.map((s) => s.split(/\s+/).length);
   const meanLength = sentenceWordCounts.length > 0
     ? sentenceWordCounts.reduce((a, b) => a + b, 0) / sentenceWordCounts.length
@@ -1502,9 +1592,14 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
     : 0;
   const burstiness = Math.round(Math.sqrt(variance) * 10) / 10;
 
+  // Track repetitive sentence opening patterns across the entire document
+  const repetitiveStartersCount = sentences.filter((s) => /^The\s+[A-Za-z0-9_-]+\s+/i.test(s)).length;
+  const isHeavyTheOpeners = sentences.length >= 4 && (repetitiveStartersCount / sentences.length) >= 0.35;
+
   const formulaicStarters = ['moreover,', 'furthermore,', 'in addition,', 'it is important to note', 'notably,', 'in conclusion,'];
 
-  const sentenceBreakdown: SentenceEvaluation[] = sentences.map((s) => {
+  // Base heuristic evaluation for each sentence
+  const sentenceBreakdown: SentenceEvaluation[] = sentences.map((s, idx) => {
     const sLower = s.toLowerCase();
     const reasons: string[] = [];
     const wordReplacements: WordReplacement[] = [];
@@ -1548,13 +1643,26 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
       wordReplacements.push({ original: 'in order to', replacements: ['to'] });
     }
 
+    // Heuristic: Repetitive procedural "The [Noun] [Verb]..." opener
+    if (isHeavyTheOpeners && /^The\s+[A-Za-z0-9_-]+\s+/i.test(s)) {
+      reasons.push('Repetitive procedural opener ("The [Noun]...")');
+      penalty += 20;
+    }
+
+    // Heuristic: Passive nominalization pattern typical of LLM procedural text
+    if (/\b(is|are|was|were)\s+([a-z]+ed)\s+(by|to|for|with)\b/i.test(s)) {
+      reasons.push('Stiff passive construction typical of LLM technical summaries');
+      penalty += 15;
+    }
+
+    // Monotonous sentence length penalty
     const words = s.split(/\s+/).length;
-    if (words >= 18 && words <= 24 && penalty > 0) {
+    if (words >= 16 && words <= 24 && penalty > 0) {
       reasons.push('Standard LLM median sentence length');
       penalty += 10;
     }
 
-    const score = penalty === 0 ? 100 : Math.max(10, Math.min(95, 100 - penalty));
+    const score = penalty === 0 ? 100 : Math.max(15, Math.min(95, 100 - penalty));
     let status: 'likely_ai' | 'mixed' | 'likely_human' = 'likely_human';
     if (score < 50) status = 'likely_ai';
     else if (score < 75) status = 'mixed';
@@ -1569,89 +1677,125 @@ export async function dispatchAiDetect(params: AiDetectParams): Promise<AiDetect
     };
   });
 
-  // ── LLM-based scoring: far more accurate than keyword matching alone ──
-  // Ask the configured AI provider to judge the text. We request a JSON response
-  // with a humanScore 0-100 and a one-line reasoning. We fall back to the
-  // pure-heuristic score if the LLM call fails or returns an unparseable response.
-  let llmHumanScore: number | null = null;
+  // ── Forensic LLM-Based Sentence & Document Evaluation ──
+  // Send the numbered sentences to the LLM to perform sentence-level attribution.
+  // This detects robotic procedural cadence, synthetic uniformity, and passive LLM style
+  // even when none of the hardcoded clichés are present.
+  let llmDocumentScore: number | null = null;
+  let llmVerdict: 'Human Written' | 'Mixed / Edited' | 'Likely Synthetic AI' | null = null;
   let llmSummary: string | null = null;
-
-  const textSample = rawText.length > 3000 ? rawText.slice(0, 3000) + '\n[...truncated for analysis...]' : rawText;
-
-  const llmDetectPrompt = `You are an expert AI-writing detector. Analyze the following academic text and determine whether it was written by a human or generated by an AI language model (such as GPT, Claude, Gemini, etc.).
-
-Consider these signals:
-- Sentence burstiness: humans vary sentence length dramatically; LLMs are uniform.
-- Hedge-word overuse: LLMs over-use "it is worth noting", "importantly", "significantly", etc.
-- Over-polished, over-structured prose with no genuine voice or idiosyncrasy.
-- Formulaic paragraph structure: topic sentence → 2-3 supporting points → summary.
-- Passive voice and nominalisation patterns typical of LLM academic imitation.
-- Genuine academic writing has specific, concrete claims; LLMs produce vague generalisations.
-- Unusual word choices, typos, or intentionally varied punctuation typically signal human writing.
-
-Respond ONLY with a valid JSON object, no markdown, no explanation outside the JSON:
-{
-  "humanScore": <integer 0-100, where 100 = certainly human, 0 = certainly AI>,
-  "reasoning": "<one or two sentences explaining the key signals you detected>"
-}
-
-Text to analyse:
----
-${textSample}
----`;
 
   try {
     const provider = resolveProvider(params.model, params.provider);
-    let llmRawReply = '';
 
-    const inlineParams = {
-      apiKey: params.apiKey,
-      model: params.model,
-      instruction: llmDetectPrompt,
-      selectedText: '',
-    };
+    // Number each sentence for precise reference in the LLM prompt
+    const numberedSentences = sentences
+      .slice(0, 40)
+      .map((s, idx) => `[${idx + 1}] ${s}`)
+      .join('\n');
 
-    if (provider === 'anthropic') {
-      llmRawReply = await inlineEditWithAnthropic(inlineParams);
-    } else if (provider === 'groq') {
-      llmRawReply = await inlineEditWithGroq(inlineParams);
-    } else if (provider === 'ollama') {
-      llmRawReply = await inlineEditWithOllama({ ...inlineParams, baseUrl: params.baseUrl });
-    } else {
-      // Default: Gemini
-      llmRawReply = await inlineEditWithGemini(inlineParams);
+    const llmDetectPrompt = `You are a forensic computational linguist and AI-content detector for scientific papers and academic LaTeX manuscripts.
+Your task is to strictly evaluate whether the following text was written by a human or generated/synthesized by an AI language model (ChatGPT, Claude, Gemini, DeepSeek, etc.).
+
+CRITICAL INSTRUCTIONS:
+Do NOT assume text is human merely because it cites technical jargon, library names, or hyperparameter numbers (e.g. "BERT", "DeiT III", "epoch 3", "224 pixels"). LLMs regularly generate precise technical procedural text.
+
+Analyze the numbered sentences below for key AI signatures:
+1. Procedural Monotony & Stiff Syntax: Repetitive "The [Noun] [Verb]..." sentence structures (e.g. "The pipeline preserves...", "The image path decodes...", "The study compared...", "The paired path loads...").
+2. Passive Nominalizations: "is processed by X to yield Y", "is projected independently to Z", "after verifying its hash, then removes...".
+3. Clinical / Synthetic Polish: Overly neat sentences lacking genuine human authorial voice, personal justification, or natural academic burstiness.
+4. Predictable Reporting Templates: Formulaic description of experiments without empirical friction or intuitive nuance.
+
+Numbered sentences to evaluate:
+${numberedSentences}
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "documentHumanScore": <integer 0-100, where 0=entirely AI generated, 100=purely human written>,
+  "verdict": "<'Human Written' | 'Mixed / Edited' | 'Likely Synthetic AI'>",
+  "summary": "<two sentences summarizing the linguistic reasons for your verdict>",
+  "flaggedSentences": [
+    {
+      "index": <integer, the 1-based sentence number from above>,
+      "humanScore": <integer 0-100, e.g. 20-45 for clearly AI, 50-70 for mixed/stiff>,
+      "status": "<'likely_ai' | 'mixed'>",
+      "reasons": ["<concise reason why this sentence sounds synthetic or robotic>"],
+      "suggestedRewrite": "<natural, bursty human academic rewrite with varied active phrasing>"
     }
+  ]
+}
 
-    // Strip markdown fences if the LLM wrapped it anyway
-    const jsonStr = llmRawReply.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+Include ANY sentence that exhibits robotic procedural structure, uniform syntax, or passive LLM cadence in "flaggedSentences". If a sentence is genuinely human and natural, do not include it.`;
+
+    const rawReply = await queryLlmForDetection(
+      llmDetectPrompt,
+      provider,
+      params.apiKey,
+      params.model,
+      params.baseUrl
+    );
+
+    const jsonStr = rawReply.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
     const parsed = JSON.parse(jsonStr);
-    if (typeof parsed.humanScore === 'number' && parsed.humanScore >= 0 && parsed.humanScore <= 100) {
-      llmHumanScore = Math.round(parsed.humanScore);
+
+    if (typeof parsed.documentHumanScore === 'number' && parsed.documentHumanScore >= 0 && parsed.documentHumanScore <= 100) {
+      llmDocumentScore = Math.round(parsed.documentHumanScore);
     }
-    if (typeof parsed.reasoning === 'string' && parsed.reasoning.length > 0) {
-      llmSummary = parsed.reasoning;
+    if (parsed.verdict === 'Human Written' || parsed.verdict === 'Mixed / Edited' || parsed.verdict === 'Likely Synthetic AI') {
+      llmVerdict = parsed.verdict;
     }
-  } catch {
-    // LLM unavailable or returned non-JSON — fall back to heuristics only
-    llmHumanScore = null;
+    if (typeof parsed.summary === 'string' && parsed.summary.trim()) {
+      llmSummary = parsed.summary.trim();
+    }
+
+    // Merge LLM sentence-level detections into sentenceBreakdown
+    if (Array.isArray(parsed.flaggedSentences)) {
+      for (const item of parsed.flaggedSentences) {
+        if (typeof item.index !== 'number') continue;
+        const idx = item.index - 1; // 1-based to 0-based
+        if (idx >= 0 && idx < sentenceBreakdown.length) {
+          const existing = sentenceBreakdown[idx];
+          const llmScore = Math.max(10, Math.min(79, Math.round(item.humanScore || 35)));
+          const llmStatus: 'likely_ai' | 'mixed' = llmScore < 50 ? 'likely_ai' : 'mixed';
+          const llmReasons = Array.isArray(item.reasons) && item.reasons.length > 0
+            ? item.reasons.filter((r: unknown) => typeof r === 'string')
+            : ['Synthetic AI cadence or repetitive procedural structure'];
+
+          const combinedReasons = Array.from(new Set([...existing.reasons, ...llmReasons]));
+
+          sentenceBreakdown[idx] = {
+            ...existing,
+            score: llmScore,
+            status: llmStatus,
+            reasons: combinedReasons,
+            suggestedRewrite: (typeof item.suggestedRewrite === 'string' && item.suggestedRewrite.trim())
+              ? item.suggestedRewrite.trim()
+              : existing.suggestedRewrite,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AI Detect] LLM-assisted detection query failed, falling back to heuristics:', err);
+    llmDocumentScore = null;
   }
 
-  // ── Combine LLM score (70%) + heuristic burstiness-adjusted score (30%) ──
-  // Heuristic score: average per-sentence scores adjusted for low burstiness.
-  const heuristicAvg = sentenceBreakdown.length > 0
+  // Compute final humanScore based on sentence evaluations and LLM document score
+  const avgSentenceScore = sentenceBreakdown.length > 0
     ? Math.round(sentenceBreakdown.reduce((acc, curr) => acc + curr.score, 0) / sentenceBreakdown.length)
     : 100;
+
   let burstinessPenalty = 0;
   if (sentenceBreakdown.length >= 4) {
-    if (burstiness < 2) burstinessPenalty = 20;
-    else if (burstiness < 3.5) burstinessPenalty = 12;
-    else if (burstiness < 5) burstinessPenalty = 5;
+    if (burstiness < 2) burstinessPenalty = 15;
+    else if (burstiness < 3.5) burstinessPenalty = 8;
   }
-  const heuristicScore = Math.max(0, Math.min(100, heuristicAvg - burstinessPenalty));
 
-  const humanScore = llmHumanScore !== null
-    ? Math.round(llmHumanScore * 0.7 + heuristicScore * 0.3)
-    : heuristicScore;
+  const finalSentenceScore = Math.max(5, Math.min(100, avgSentenceScore - burstinessPenalty));
+
+  const humanScore = llmDocumentScore !== null
+    ? Math.max(5, Math.min(100, Math.round(llmDocumentScore * 0.5 + finalSentenceScore * 0.5)))
+    : finalSentenceScore;
 
   const aiScore = 100 - humanScore;
 
@@ -1659,9 +1803,11 @@ ${textSample}
   if (burstiness > 8 && humanScore > 80) perplexityLevel = 'High (Human-like)';
   else if (burstiness < 4 || humanScore < 60) perplexityLevel = 'Low (Robotic)';
 
-  let verdict: 'Human Written' | 'Mixed / Edited' | 'Likely Synthetic AI' = 'Human Written';
-  if (humanScore < 55) verdict = 'Likely Synthetic AI';
-  else if (humanScore < 78) verdict = 'Mixed / Edited';
+  let verdict: 'Human Written' | 'Mixed / Edited' | 'Likely Synthetic AI' = llmVerdict || 'Human Written';
+  if (!llmVerdict) {
+    if (humanScore < 55) verdict = 'Likely Synthetic AI';
+    else if (humanScore < 78) verdict = 'Mixed / Edited';
+  }
 
   const summary = llmSummary
     ?? (verdict === 'Human Written'
