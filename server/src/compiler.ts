@@ -165,15 +165,42 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     }
 
     // 3. Prepare execution arguments with -no-shell-escape (SEC-01)
+    const baseName = mainFile.replace(/\.tex$/i, '');
+    const mainFileBaseName = path.basename(mainFile, '.tex');
+    const mainFileName = path.basename(mainFile);
+    const mainFileDir = path.dirname(path.join(buildDir, mainFile));
+
+    // Ensure mainFile directory exists
+    await fs.mkdir(mainFileDir, { recursive: true });
+
+    // Build TEXINPUTS search path so \input, \include, and \includegraphics can resolve files
+    // in the file's directory, its subdirectories, the root buildDir, and standard TeX packages.
+    const texinputs = [
+      '.',
+      mainFileDir,
+      `${mainFileDir}//`,
+      buildDir,
+      `${buildDir}//`,
+      '', // Trailing colon ensures standard TeX packages are searched
+    ].join(':');
+
+    const compilerEnv = {
+      ...process.env,
+      PATH: ENHANCED_PATH,
+      TEXINPUTS: texinputs,
+      BIBINPUTS: texinputs,
+      BSTINPUTS: texinputs,
+    };
+
     let cmd = selectedEngine;
     let args: string[] = [];
 
     if (selectedEngine === 'tectonic') {
-      args = ['-o', '.', '--keep-logs', '--synctex', mainFile];
+      args = ['-o', '.', '--keep-logs', '--synctex', mainFileName];
     } else if (selectedEngine === 'latexmk') {
-      args = ['-pdf', '-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
+      args = ['-pdf', '-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFileName];
     } else if (selectedEngine === 'pdflatex' || selectedEngine === 'xelatex') {
-      args = ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile];
+      args = ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFileName];
     }
 
     let stdout = '';
@@ -182,12 +209,9 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
 
     try {
       const result = await execFileAsync(cmd, args, {
-        cwd: buildDir,
+        cwd: mainFileDir,
         timeout: 180000,
-        env: {
-          ...process.env,
-          PATH: ENHANCED_PATH,
-        },
+        env: compilerEnv,
       });
       stdout = result.stdout;
       stderr = result.stderr;
@@ -198,50 +222,92 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
     }
 
     // 4. Read .log file if generated and combine with CLI outputs
-    const baseName = mainFile.replace(/\.tex$/i, '');
-    const logFilePath = path.join(buildDir, `${baseName}.log`);
+    const candidateLogPaths = [
+      path.join(mainFileDir, `${mainFileBaseName}.log`),
+      path.join(buildDir, `${baseName}.log`),
+      path.join(buildDir, `${mainFileBaseName}.log`),
+    ];
     let rawLog = (stdout + (stderr ? '\n' + stderr : '')).trim();
 
-    try {
-      const logContent = await fs.readFile(logFilePath, 'utf-8');
-      rawLog = (rawLog + '\n\n--- TeX Engine Log ---\n' + logContent).trim();
-    } catch {
-      // Log file didn't exist, rawLog remains stdout+stderr
+    for (const logPath of candidateLogPaths) {
+      try {
+        const logContent = await fs.readFile(logPath, 'utf-8');
+        if (logContent) {
+          rawLog = (rawLog + '\n\n--- TeX Engine Log ---\n' + logContent).trim();
+          break;
+        }
+      } catch {
+        // Continue checking candidate paths
+      }
     }
 
     // 5. Parse diagnostics
     const { errors, warnings } = parseLaTeXLog(rawLog, mainFile);
 
     // 6. Check for output PDF
-    const pdfFilePath = path.join(buildDir, `${baseName}.pdf`);
+    const candidatePdfPaths = [
+      path.join(mainFileDir, `${mainFileBaseName}.pdf`),
+      path.join(buildDir, `${baseName}.pdf`),
+      path.join(buildDir, `${mainFileBaseName}.pdf`),
+    ];
     let pdfBuffer: Buffer | null = null;
     let success = false;
 
-    try {
-      pdfBuffer = await fs.readFile(pdfFilePath);
-      success = true;
-    } catch {
-      success = false;
+    for (const pdfPath of candidatePdfPaths) {
+      try {
+        pdfBuffer = await fs.readFile(pdfPath);
+        if (pdfBuffer && pdfBuffer.length > 0) {
+          success = true;
+          // Ensure standard output path is populated for static file / cache lookups
+          const standardTarget = path.join(buildDir, `${baseName}.pdf`);
+          if (pdfPath !== standardTarget) {
+            await fs.mkdir(path.dirname(standardTarget), { recursive: true });
+            await fs.writeFile(standardTarget, pdfBuffer);
+          }
+          break;
+        }
+      } catch {
+        // Continue checking candidate paths
+      }
     }
 
     // If initial engine failed to produce PDF, attempt graceful fallback to pdflatex
     if (!success && selectedEngine !== 'pdflatex' && engineStatus.availableEngines.pdflatex) {
       try {
-        const fallbackRes = await execFileAsync('pdflatex', ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFile], {
-          cwd: buildDir,
+        const fallbackRes = await execFileAsync('pdflatex', ['-no-shell-escape', '-interaction=nonstopmode', '-file-line-error', '-synctex=1', mainFileName], {
+          cwd: mainFileDir,
           timeout: 120000,
-          env: { ...process.env, PATH: ENHANCED_PATH },
+          env: compilerEnv,
         });
         rawLog += `\n\n--- Fallback Engine: pdflatex ---\n` + (fallbackRes.stdout || '') + (fallbackRes.stderr ? '\n' + fallbackRes.stderr : '');
-        try {
-          const fallbackLog = await fs.readFile(logFilePath, 'utf-8');
-          rawLog += '\n\n--- TeX Engine Log ---\n' + fallbackLog;
-        } catch {
-          // ignore log read error
+        for (const logPath of candidateLogPaths) {
+          try {
+            const fallbackLog = await fs.readFile(logPath, 'utf-8');
+            if (fallbackLog) {
+              rawLog += '\n\n--- TeX Engine Log ---\n' + fallbackLog;
+              break;
+            }
+          } catch {
+            // ignore
+          }
         }
-        pdfBuffer = await fs.readFile(pdfFilePath);
-        success = true;
-        selectedEngine = 'pdflatex (fallback)';
+        for (const pdfPath of candidatePdfPaths) {
+          try {
+            pdfBuffer = await fs.readFile(pdfPath);
+            if (pdfBuffer && pdfBuffer.length > 0) {
+              success = true;
+              selectedEngine = 'pdflatex (fallback)';
+              const standardTarget = path.join(buildDir, `${baseName}.pdf`);
+              if (pdfPath !== standardTarget) {
+                await fs.mkdir(path.dirname(standardTarget), { recursive: true });
+                await fs.writeFile(standardTarget, pdfBuffer);
+              }
+              break;
+            }
+          } catch {
+            // ignore
+          }
+        }
       } catch (fallbackErr: any) {
         // Fallback did not succeed, keep original log
         rawLog += `\n[Fallback pdflatex attempt]: ${fallbackErr?.message || 'failed'}`;
@@ -250,20 +316,41 @@ export async function compileWorkspace(req: CompileRequest): Promise<CompileResp
 
     // 7. Parse SyncTeX data if generated for forward/reverse synchronization
     let synctexData: SyncTeXData | undefined = undefined;
-    const synctexGzPath = path.join(buildDir, `${baseName}.synctex.gz`);
-    const synctexPlainPath = path.join(buildDir, `${baseName}.synctex`);
+    const candidateSyncTexGzPaths = [
+      path.join(mainFileDir, `${mainFileBaseName}.synctex.gz`),
+      path.join(buildDir, `${baseName}.synctex.gz`),
+      path.join(buildDir, `${mainFileBaseName}.synctex.gz`),
+    ];
+    const candidateSyncTexPlainPaths = [
+      path.join(mainFileDir, `${mainFileBaseName}.synctex`),
+      path.join(buildDir, `${baseName}.synctex`),
+      path.join(buildDir, `${mainFileBaseName}.synctex`),
+    ];
 
     try {
-      const hasGz = await fs.stat(synctexGzPath).then(() => true).catch(() => false);
-      const hasPlain = !hasGz && await fs.stat(synctexPlainPath).then(() => true).catch(() => false);
+      let gzFound = false;
+      for (const gzPath of candidateSyncTexGzPaths) {
+        try {
+          const gzBuffer = await fs.readFile(gzPath);
+          if (gzBuffer && gzBuffer.length > 0) {
+            const uncompressed = zlib.gunzipSync(gzBuffer).toString('utf-8');
+            synctexData = parseSyncTeX(uncompressed, buildDir);
+            gzFound = true;
+            break;
+          }
+        } catch {}
+      }
 
-      if (hasGz) {
-        const gzBuffer = await fs.readFile(synctexGzPath);
-        const uncompressed = zlib.gunzipSync(gzBuffer).toString('utf-8');
-        synctexData = parseSyncTeX(uncompressed, buildDir);
-      } else if (hasPlain) {
-        const plainText = await fs.readFile(synctexPlainPath, 'utf-8');
-        synctexData = parseSyncTeX(plainText, buildDir);
+      if (!gzFound) {
+        for (const plainPath of candidateSyncTexPlainPaths) {
+          try {
+            const plainText = await fs.readFile(plainPath, 'utf-8');
+            if (plainText) {
+              synctexData = parseSyncTeX(plainText, buildDir);
+              break;
+            }
+          } catch {}
+        }
       }
     } catch (synctexErr: any) {
       console.warn('SyncTeX parsing warning:', synctexErr?.message || synctexErr);

@@ -70,12 +70,18 @@ export async function importZipToProject(
 
   const entries = Object.keys(zip.files);
 
+  // Filter out system metadata entries (e.g. __MACOSX, .DS_Store) first so wrapper folder detection is reliable
+  const validEntries = entries.filter((rawPath) => {
+    const cleanPath = normalizeZipPath(rawPath);
+    return cleanPath && !IGNORE_PATTERNS.some((pat) => pat.test(cleanPath));
+  });
+
   // Detect common single-root wrapper folder (e.g. "my-project/main.tex")
   let commonPrefix = '';
-  const rootEntries = entries.map((e) => e.split('/')[0]).filter(Boolean);
+  const rootEntries = validEntries.map((e) => e.split('/')[0]).filter(Boolean);
   if (rootEntries.length > 0 && rootEntries.every((r) => r === rootEntries[0])) {
     const candidatePrefix = `${rootEntries[0]}/`;
-    const isWrapperDir = entries.every((e) => e.startsWith(candidatePrefix) || e === rootEntries[0]);
+    const isWrapperDir = validEntries.every((e) => e.startsWith(candidatePrefix) || e === rootEntries[0]);
     if (isWrapperDir) {
       commonPrefix = candidatePrefix;
     }

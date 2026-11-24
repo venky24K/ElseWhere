@@ -127,6 +127,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     const projectStore = useProjectStore.getState();
     const aiStore = useAiStore.getState();
+
+    if (!aiStore.getActiveKey() && aiStore.provider !== 'ollama') {
+      aiStore.setSettingsModalOpen(true);
+      set({
+        isPlanning: false,
+        error: `Please configure your ${aiStore.provider.toUpperCase()} API key in AI Settings (gear icon).`,
+      });
+      return;
+    }
+
     const files = Object.keys(projectStore.files);
     const activeFile = projectStore.activeFilePath || 'main.tex';
 
@@ -170,6 +180,23 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     const projectStore = useProjectStore.getState();
     const aiStore = useAiStore.getState();
+
+    if (!aiStore.getActiveKey() && aiStore.provider !== 'ollama') {
+      aiStore.setSettingsModalOpen(true);
+      set({
+        isRunning: false,
+        error: `Please configure your ${aiStore.provider.toUpperCase()} API key in AI Settings (gear icon) to use the AI Doctor.`,
+        logs: [
+          ...get().logs,
+          {
+            stepIndex: 0,
+            completedSummary: `⚠️ Missing API key: Please open AI Settings (gear icon) and enter your ${aiStore.provider.toUpperCase()} API key.`,
+            timestamp: Date.now(),
+          },
+        ],
+      });
+      return;
+    }
 
     const fileList = Object.keys(projectStore.files);
     const activeFile = projectStore.activeFilePath || 'main.tex';
