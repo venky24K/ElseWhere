@@ -200,8 +200,11 @@ export const HumanizerDetectorView: React.FC = () => {
     // 1. Robust multiline/whitespace-agnostic text replacement in the project store
     const curContent = files[activeFilePath]?.content || '';
     const res = replaceSentenceInText(curContent, original, replacement);
+
     if (res.replaced) {
       updateFileContent(activeFilePath, res.newContent);
+    } else {
+      console.warn('[handleDirectApply] Could not locate sentence in file content:', original);
     }
 
     // 2. Dispatch custom event for Monaco editor to update its range and undo stack
