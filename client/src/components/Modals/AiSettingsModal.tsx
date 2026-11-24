@@ -51,6 +51,18 @@ export const AiSettingsModal: React.FC = () => {
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const switchTab = (newTab: AiProvider) => {
+    setActiveTab(newTab);
+    setCustomModelProvider(newTab);
+    const hasModelForTab = supportedModels.some((m) => m.provider === newTab && m.id === selectedModel);
+    if (!hasModelForTab) {
+      if (newTab === 'groq') setSelectedModel('openai/gpt-oss-120b');
+      else if (newTab === 'gemini') setSelectedModel('gemini-3.6-flash');
+      else if (newTab === 'anthropic') setSelectedModel('claude-3-7-sonnet-20250219');
+      else if (newTab === 'ollama') setSelectedModel('llama3.3:latest');
+    }
+  };
+
   // Custom model creation form state
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [customModelId, setCustomModelId] = useState('');
@@ -143,10 +155,7 @@ export const AiSettingsModal: React.FC = () => {
                 ? 'bg-card text-text-primary border border-border-light shadow-sm'
                 : 'text-text-muted hover:text-text-primary hover:bg-card-hover'
             }`}
-            onClick={() => {
-              setActiveTab('groq');
-              setCustomModelProvider('groq');
-            }}
+            onClick={() => switchTab('groq')}
           >
             <Zap size={14} className="text-accent-amber shrink-0" />
             <span className="truncate">Groq LPU</span>
@@ -159,10 +168,7 @@ export const AiSettingsModal: React.FC = () => {
                 ? 'bg-card text-text-primary border border-border-light shadow-sm'
                 : 'text-text-muted hover:text-text-primary hover:bg-card-hover'
             }`}
-            onClick={() => {
-              setActiveTab('gemini');
-              setCustomModelProvider('gemini');
-            }}
+            onClick={() => switchTab('gemini')}
           >
             <Sparkles size={14} className="text-accent-blue shrink-0" />
             <span className="truncate">Gemini</span>
@@ -175,10 +181,7 @@ export const AiSettingsModal: React.FC = () => {
                 ? 'bg-card text-text-primary border border-border-light shadow-sm'
                 : 'text-text-muted hover:text-text-primary hover:bg-card-hover'
             }`}
-            onClick={() => {
-              setActiveTab('anthropic');
-              setCustomModelProvider('anthropic');
-            }}
+            onClick={() => switchTab('anthropic')}
           >
             <Brain size={14} className="text-orange-400 shrink-0" />
             <span className="truncate">Anthropic</span>
@@ -191,10 +194,7 @@ export const AiSettingsModal: React.FC = () => {
                 ? 'bg-card text-text-primary border border-border-light shadow-sm'
                 : 'text-text-muted hover:text-text-primary hover:bg-card-hover'
             }`}
-            onClick={() => {
-              setActiveTab('ollama');
-              setCustomModelProvider('ollama');
-            }}
+            onClick={() => switchTab('ollama')}
           >
             <Server size={14} className="text-emerald-400 shrink-0" />
             <span className="truncate">Ollama Local</span>

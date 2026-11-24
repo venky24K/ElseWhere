@@ -259,6 +259,7 @@ export const HumanizerDetectorView: React.FC = () => {
         text: flag.sentence,
         model: selectedModel,
         apiKey: activeKey || undefined,
+        baseUrl,
         provider,
         academicStyle: 'standard',
       });

@@ -250,8 +250,8 @@ async function chatWithGroq(params: AiChatParams): Promise<AiChatResult> {
     throw new Error('Groq API key is required. Please set it in AI Settings or server .env.');
   }
 
-  let model = params.model && !params.model.startsWith('gemini-') ? params.model : 'openai/gpt-oss-120b';
-  if (model.includes('llama') && !model.includes('distill')) {
+  let model = params.model && !params.model.startsWith('gemini-') && !params.model.startsWith('claude-') ? params.model : 'openai/gpt-oss-120b';
+  if (['llama-3.1-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'].includes(model)) {
     model = 'openai/gpt-oss-120b';
   }
 
@@ -323,8 +323,8 @@ async function inlineEditWithGroq(params: AiInlineParams): Promise<string> {
     throw new Error('Groq API key is required. Please set it in AI Settings or server .env.');
   }
 
-  let model = params.model && !params.model.startsWith('gemini-') ? params.model : 'openai/gpt-oss-120b';
-  if (model.includes('llama') && !model.includes('distill')) {
+  let model = params.model && !params.model.startsWith('gemini-') && !params.model.startsWith('claude-') ? params.model : 'openai/gpt-oss-120b';
+  if (['llama-3.1-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'].includes(model)) {
     model = 'openai/gpt-oss-120b';
   }
 
@@ -747,8 +747,8 @@ async function completeWithGroq(params: AiCompletionParams): Promise<string> {
     throw new Error('Groq API key is required.');
   }
 
-  let model = params.model && !params.model.startsWith('gemini-') ? params.model : 'openai/gpt-oss-120b';
-  if (model.includes('llama') && !model.includes('distill')) {
+  let model = params.model && !params.model.startsWith('gemini-') && !params.model.startsWith('claude-') ? params.model : 'openai/gpt-oss-120b';
+  if (['llama-3.1-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'].includes(model)) {
     model = 'openai/gpt-oss-120b';
   }
 
@@ -978,8 +978,8 @@ async function agentStepWithGroq(params: AiAgentStepParams): Promise<AiAgentStep
     throw new Error('Groq API key is required for agent execution.');
   }
 
-  let model = params.model && !params.model.startsWith('gemini-') ? params.model : 'openai/gpt-oss-120b';
-  if (model.includes('llama') && !model.includes('distill')) {
+  let model = params.model && !params.model.startsWith('gemini-') && !params.model.startsWith('claude-') ? params.model : 'openai/gpt-oss-120b';
+  if (['llama-3.1-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192'].includes(model)) {
     model = 'openai/gpt-oss-120b';
   }
 
@@ -1395,6 +1395,7 @@ export async function dispatchAiHumanize(params: AiHumanizeParams): Promise<AiHu
   const replacement = await dispatchAiInlineEdit({
     provider: params.provider,
     apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
     model: params.model,
     instruction,
     selectedText: params.text,
@@ -1692,6 +1693,7 @@ ${paperSummaries}`;
   const response = await dispatchAiChat({
     provider: params.provider,
     apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
     model: params.model,
     prompt,
   });
@@ -1727,6 +1729,7 @@ Example:
   const response = await dispatchAiChat({
     provider: params.provider,
     apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
     model: params.model,
     prompt,
   });
@@ -2076,6 +2079,7 @@ Requirements:
   const draftResponse = await dispatchAiChat({
     provider: params.provider,
     apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
     model: params.model,
     prompt: draftPrompt,
   });
