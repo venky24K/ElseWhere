@@ -132,10 +132,9 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
       };
     });
 
-    // Find first AI detected flag if any, else 0
-    const flagged = flags.filter((f) => f.status !== 'likely_human');
-    const firstAiIdx = flags.findIndex((f) => f.status !== 'likely_human');
-    const initialActive = firstAiIdx !== -1 ? firstAiIdx : 0;
+    // Find first AI-flagged sentence to focus on; default to 0 if none exist
+    const firstFlagged = flags.find((f) => f.status !== 'likely_human');
+    const initialActive = firstFlagged ? firstFlagged.index : 0;
 
     // BUG-4 FIX: Never override the LLM-based humanScore just because no keyword sentences
     // were flagged. The heuristic sentence breakdown can be empty (no cliché hits) while the
